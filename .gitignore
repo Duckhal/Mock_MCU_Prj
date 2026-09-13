@@ -1,0 +1,19 @@
+#Editor config
+.vscode
+
+# Eclipse project files
+Debug_FLASH/
+Debug_RAM/
+Release/
+Binaries/
+build/
+
+# Eclipse project files
+.metadata/
+.settings/language.settings.xml
+*.launch
+
+# Temporary files
+*.tmp
+*.bak
+*.log
