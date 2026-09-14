@@ -10,6 +10,7 @@ Nguồn: [assignment](../../requirements/assignment_part1_com_signal.md) §3.5,1
 - CAN Driver có CAN0 polling/test; cần theo driver plan để xác nhận lifecycle và model nhiều controller.
 - BSP đã init clock/pin nhưng chưa trả lỗi có bound đầy đủ; main chưa có scheduler1 ms.
 - Shared return codes/signatures phải nhất quán giữa các plan trước khi link.
+- Profile timing bổ sung dùng phase window 10 ms: Tx period là bội 10, offset nằm trong 1..9 và không trùng giữa các Tx I-PDU trên cùng profile/node.
 - CAN config hiện filter0x123; ví dụ bài dùng0x321. Đây là khác biệt config cần chốt, không tự gọi cả hai là cùng wire protocol.
 - Ba ECU do ba người viết: project này không thể sửa firmware còn lại hoặc chứng minh chúng tương thích khi chưa có traces/config của họ.
 
@@ -21,7 +22,7 @@ Ví dụ **đề xuất dùng cho fixture**:
 
 | Message | Global | CAN ID | Publisher | Receiver | DLC | Slots | Timing |
 |---|---:|---:|---|---|---:|---|---|
-| VehicleStatus | 0x0010 | 0x321 | ECU1 | ECU2, ECU3 | 8 | Speed16, Gear8, Alive8, padding4 byte | period10, offset1, retries3 |
+| VehicleStatus | 0x0010 | 0x321 | ECU1 | ECU2, ECU3 | 8 | Speed16, Gear8, Alive8, padding4 byte | period10, offset1, retries3; phase window10 |
 
 Không coi publisher/CAN ID/profile này đã được cả nhóm chấp nhận. Little-endian, unsigned values và Rx U=0 policy lấy từ COM plan cũng phải chốt ở matrix trước chạy physical interoperability. App thật chưa rõ, test signal giả đủ kiểm layer.
 
@@ -39,7 +40,7 @@ ECU3 có thể có local IDs khác nữa. Tx/Rx endpoint của một message cù
 
 ## 3. File inventory và ownership
 
-**14 file code/config/test/build trong scope tích hợp: 7 có sẵn cần sửa, 7 file mới.** Nhiều config là shared với plan module; count này là edit surface của integration, không cộng thẳng thành tổng source mới toàn project.
+**17 file code/config/test/build trong scope tích hợp: 7 có sẵn cần sửa, 10 file mới.** Nhiều config là shared với plan module; count này là edit surface của integration, không cộng thẳng thành tổng source mới toàn project.
 
 | # | File | Loại | Chức năng |
 |---:|---|---|---|
@@ -57,8 +58,13 @@ ECU3 có thể có local IDs khác nữa. Tx/Rx endpoint của một message cù
 | 12 | `tests/host/comm_stack/run_tests.ps1` | Mới | Link đúng real/fake set, chạy trace scenario/logs |
 | 13 | `requirements/part1_message_matrix.json` | Mới | Source of truth shared wire messages + per-node logical references, version |
 | 14 | `tests/config/validate_part1_matrix.py` | Mới | Standard-library validator: uniqueness, references, slot/timing/binding; exit nonzero khi sai |
+| 15 | `drivers/can/config/comm_matrix_cfg.h` | Mới/đã tạo | Hằng system-owned cho GlobalPduId, CAN ID, DLC và profile phase 10 ms; không chứa runtime logic |
+| 16 | `tests/host/config/test_part1_config.c` | Mới/đã tạo | Conformance test giữa const C config COM/PduR/CanIf/CAN/node |
+| 17 | `tests/host/config/run_tests.ps1` | Mới/đã tạo | Compile C99 strict vào thư mục tạm và chạy conformance test |
 
 Test stack có thể tái sử dụng fake CAN phần CanIf test nhưng tách fake PduR/COM bằng compile guard trong fake endpoint file; không link duplicate symbols. Nếu fake cũ quá gộp, refactor có test rồi cập nhật inventory thực tế.
+
+Tiến độ type/config 2026-09-15: rows 1–6 và 15–17 đã có nền cấu hình Tx-only nhất quán; node root chọn `Com_Config`, `PduR_Config`, `CanIf_Config` và `Can_Config_Normal`. JSON matrix/validator tổng quát, runtime stack và board harness vẫn chưa triển khai.
 
 Tài liệu khi thực thi: `docs/implement/stack-part1-validation.md`, `docs/implement/part1-model-views.md`, `docs/implement/part1-traces.md`; cập nhật API_SPEC/core/init guide. Những file này chưa chứa report PASS trước khi chạy.
 
@@ -67,7 +73,7 @@ Tài liệu khi thực thi: `docs/implement/stack-part1-validation.md`, `docs/im
 1. Bảng message định nghĩa globalId/name/CAN ID/DLC/endian/slots, publisher/consumers, period/offset/retry, version. Bảng node định nghĩa local signal/group/PDU/route/L-PDU/HOH/controller references.
 2. Validate mỗi Signal một Group, Group một PDU; slot overlap/bounds/range; global unique theo logical message.
 3. Validate Direct Binding một global message→một CAN ID trong profile; sender ownership không trùng trên cùng bus; receiver đúng message; route endpoints/length khớp; HOH exists/correct type/controller; Rx key HRH+CAN ID unique.
-4. Validate period/offset/retry giới hạn implementation; đủ pin/clock profile để dùng controller đã chọn.
+4. Validate period/offset/retry giới hạn implementation; với profile project, mọi Tx period chia hết cho 10, offset thuộc 1..9 và offset không trùng. Validator chỉ khẳng định nominal due không trùng; retry tick kế tiếp vẫn có thể chạm nominal slot khác và phải giữ static processing order.
 5. Ban đầu C config viết tay từ matrix, chưa cần generator. Validator JSON **không chứng minh C config đã khớp**: thêm host configuration-conformance assertions trên exported const C objects và các trường matrix/golden fixtures; report có review trace mapping. Nếu sau này generate C từ matrix, thay workflow thành regeneration/diff check.
 
 **Exit:** matrix pass, fixture cố tình sai fail, từng ECU review wire profile; không sửa đề gốc để làm mất dấu khác biệt.

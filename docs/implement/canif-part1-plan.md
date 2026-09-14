@@ -1,12 +1,12 @@
 # Plan triển khai CanIf — Part 1
 
-Trạng thái: **PLAN**. Nguồn: [assignment](../../requirements/assignment_part1_com_signal.md) §4,18–27,30–39; [notes](../../requirements/part1_architecture_notes.md) §19–29. Liên quan: [PduR](pdur-part1-plan.md), [CAN Driver](can-driver-part1-plan.md).
+Trạng thái: **TYPES/CONFIG ĐÃ CÓ, LOGIC CHƯA TRIỂN KHAI**. `canif_types.h` và Tx Direct Binding config đã được tạo; public API, adapter, lookup và runtime ownership vẫn theo các giai đoạn bên dưới. Nguồn: [assignment](../../requirements/assignment_part1_com_signal.md) §4,18–27,30–39; [notes](../../requirements/part1_architecture_notes.md) §19–29. Liên quan: [PduR](pdur-part1-plan.md), [CAN Driver](can-driver-part1-plan.md).
 
 ## 1. Mục tiêu và hiện trạng
 
 CanIf sở hữu logical L-PDU→CAN mapping. Tx: TxPduId→CAN ID+HTH. Rx: HRH+CAN ID→RxPduId. Driver sở hữu HOH/controller, PduR sở hữu route; CanIf chỉ tham chiếu các object đó.
 
-Chưa có CanIf implementation; `drivers/can/config/canif/canif_cfg.c/.h` rỗng. Driver hiện có Can_Write với swPduHandle, register callbacks, mode/stats; callback Rx hiện dùng `(Can_HwType*, Can_PduType*)` khác training API `(Hrh, Can_RxPduType*)`.
+Chưa có CanIf runtime implementation. `drivers/can/comm/canif/canif_types.h` và `drivers/can/config/canif/canif_cfg.c/.h` hiện mô tả TxPdu7→CAN ID0x321/HTH0/Global0x0010; profile hiện tại Tx-only. Driver có Can_Write với swPduHandle, register callbacks, mode/stats; `Can_RxPduType` đã được bổ sung cho adapter tương lai, còn callback Rx hiện vẫn dùng `(Can_HwType*, Can_PduType*)`.
 
 Không reuse trực tiếp CanUpper làm CanIf vì nó gộp mapping và consumer buffer. Có thể tham khảo lookup từ `can_task/upper` nhưng phải giữ callback về PduR và kiểm HRH+CAN ID.
 
@@ -19,6 +19,7 @@ Không reuse trực tiếp CanUpper làm CanIf vì nó gộp mapping và consume
 - PduR là upper owner duy nhất trong Part 1. Không thêm CanTp dispatch trước khi có yêu cầu Part 2.
 - Đề xuất giữ public training Rx API và dùng adapter **private** nối callback driver hiện có. Không để COM/PduR phụ thuộc Can_HwType.
 - GlobalPduId chỉ phục vụ cấu hình/trace. CanIf không serialize Global ID.
+- Tip phase 10 ms/offset 1..9 không tạo scheduler hoặc queue trong CanIf. CanIf xử lý request hiện tại; COM/config hệ thống sở hữu period, offset và retry.
 
 ## 3. File inventory
 

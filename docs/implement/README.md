@@ -1,6 +1,6 @@
 # Kế hoạch triển khai communication stack — Part 1
 
-Trạng thái toàn bộ tài liệu: **PLAN**. Bộ plan được lập từ [assignment của người giao bài](../../requirements/assignment_part1_com_signal.md) và [architecture notes](../../requirements/part1_architecture_notes.md). Chưa thực thi các giai đoạn code chỉ vì đã tạo tài liệu.
+Trạng thái: **PLAN đang được thực thi theo từng giai đoạn**. Bộ plan được lập từ [assignment của người giao bài](../../requirements/assignment_part1_com_signal.md), [architecture notes](../../requirements/part1_architecture_notes.md) và tip timing bổ sung do người giao bài cung cấp ngày 2026-09-14. Types/config có thể hoàn thành trước trong khi logic và validation report vẫn còn ở trạng thái kế hoạch.
 
 ## 1. Danh sách plan
 
@@ -11,9 +11,11 @@ Trạng thái toàn bộ tài liệu: **PLAN**. Bộ plan được lập từ [a
 | 3 | [CanIf](canif-part1-plan.md) | Logical CAN mapping, HRH+ID lookup, no queue, callback adapter | 12 file: 3 sửa + 9 mới |
 | 4 | [CAN Driver](can-driver-part1-plan.md) | Tái sử dụng driver, multi-controller/lifecycle/event/Rx regressions | 12 file: 11 có sẵn + 1 mới |
 | 5 | [BSP/timebase/scheduler](bsp-scheduler-part1-plan.md) | Bounded board init, SysTick, main-context cadence1 ms | 11 file: 4 có sẵn + 7 mới |
-| 6 | [Cấu hình/tích hợp toàn stack](stack-integration-part1-plan.md) | Matrix/validator, full paths, firmware/board evidence, 19 deliverables | 14 file: 7 sửa + 7 mới |
+| 6 | [Cấu hình/tích hợp toàn stack](stack-integration-part1-plan.md) | Matrix/validator, full paths, firmware/board evidence, 19 deliverables | 17 file: 7 có sẵn + 10 mới |
 
 Các số là phạm vi từng plan tại snapshot khảo sát, không phải tổng file khác nhau: common header, pdur_com.h và config C được tham chiếu ở nhiều plan. Mỗi file shared chỉ có một định nghĩa, một phiên bản; plan tích hợp không tạo thêm bản sao.
+
+Tiến độ 2026-09-15: type/config foundation cho COM, PduR, CanIf, system matrix và node root đã có source; host conformance test đã chạy. Runtime logic của COM/PduR/CanIf, scheduler và board integration vẫn chưa hoàn thành.
 
 ## 2. Thứ tự viết code khác thứ tự init
 
@@ -41,6 +43,7 @@ Thứ tự init khi tích hợp: BSP/timebase → CAN STOPPED → CanIf/register
 8. Module state và physical controller state độc lập. Bounded retry COM không thay nghĩa vụ terminal event của request đã được driver accepted.
 9. Comment mỗi hàm, input validation, static bounds, deterministic tests và logs thật trước khi ghi PASS. Debug hardware theo reproduce/log/manual rồi mới sửa.
 10. Giữ `bsp/can` ngoài `drivers/can`; firmware không link host fakes, legacy can_task hoặc hai entrypoints.
+11. Profile timing của project dùng cửa sổ phase 10 ms: Tx I-PDU có period là bội của 10 ms và offset riêng trong 1..9 ms. Đây là rule cấu hình/validator để phân tán **nominal due time**; COM core vẫn dùng tick 1 ms theo assignment, còn retry có thể sử dụng tick kế tiếp và trùng với nominal slot khác.
 
 ## 4. Tài liệu ngoài Part 1
 

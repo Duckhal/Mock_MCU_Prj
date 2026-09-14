@@ -1,6 +1,6 @@
 # Project Context
 
-Cập nhật: 2026-09-14. Đọc cùng [codebase-map.md](codebase-map.md) trước mỗi task.
+Cập nhật: 2026-09-15. Đọc cùng [codebase-map.md](codebase-map.md) trước mỗi task.
 
 ## Quy tắc tương tác của người dùng
 
@@ -16,18 +16,19 @@ Cập nhật: 2026-09-14. Đọc cùng [codebase-map.md](codebase-map.md) trư�
 
 - Workspace phục vụ **Mock Project MCU**, yêu cầu trong [requirements/README.md](../requirements/README.md).
 - [Mock_MCU-Overview.png](../requirements/Mock_MCU-Overview.png) là mô hình hệ thống **khi hoàn thiện**, không mô tả mức implementation hiện tại.
-- [Mock_MCU-Tx-Rx Flow.png](<../requirements/Mock_MCU-Tx-Rx Flow.png>) là luồng gửi/nhận **tạm thời** người dùng và cộng tác viên đang theo; được phép refine dựa trên yêu cầu/bằng chứng.
+- [Mock_MCU-Tx-Rx Flow.png](<../requirements/assumptions/Mock_MCU-Tx-Rx Flow.png>) là luồng gửi/nhận **tạm thời** người dùng và cộng tác viên đang theo; được phép refine dựa trên yêu cầu/bằng chứng.
 - **Ba ECU là sản phẩm của ba người khác nhau. Code và cách tổ chức chắc chắn có thể khác nhau.** Không yêu cầu đồng nhất source/API C/PDU ID/HTH/HRH/MB giữa firmware; thống nhất wire protocol, message matrix và test vector để tích hợp.
 - Ưu tiên mới: người dùng đã cung cấp assignment Part 1 và muốn triển khai COM theo từng giai đoạn. COM có thể được viết/test độc lập với fake PduR trước khi PduR/CanIf thật hoàn tất. App/bulk transfer vẫn nằm ngoài Part 1.
-- Người dùng đã yêu cầu khảo sát project, tạo core memory và góp ý/chỉnh `requirements/API_SPEC.md`. Lượt khảo sát này chỉ cập nhật tài liệu, không refactor source hay bật harness.
+- Người dùng đã yêu cầu khảo sát project, tạo core memory và góp ý/chỉnh `requirements/assumptions/API_SPEC.md`. Lượt khảo sát này chỉ cập nhật tài liệu, không refactor source hay bật harness.
 
 ## Yêu cầu có trong tài liệu, chưa đồng nghĩa đã triển khai
 
 - Hai tài liệu mới từ người giao bài: [assignment_part1_com_signal.md](../requirements/assignment_part1_com_signal.md) là yêu cầu chính Part 1; [part1_architecture_notes.md](../requirements/part1_architecture_notes.md) giải thích thiết kế. Khi khác API_SPEC/skeleton cũ, plan COM theo assignment và ghi rõ migration cần làm.
 - Part 1: Signal → một Group → một I-PDU; slot byte-aligned có U ở bit0; Tx periodic với base tick 1 ms, static config order, latest value wins, bounded retry tối đa 1 + max_retries, drop occurrence giữ U/data và không dịch lịch. Clear U ngay khi lower accepted, không đợi TxConfirmation.
+- Tip timing bổ sung của người giao bài: profile project chọn period Tx là bội của cửa sổ 10 ms và offset riêng trong 1..9 ms. Rule này phân tán nominal due time; retry ở tick kế vẫn có thể trùng nominal slot khác. COM core không hard-code profile này, C config/system validator chịu trách nhiệm kiểm.
 - GlobalPduId là identity chung của logical message trong hệ thống; local handles giữa ECU vẫn có thể khác. Direct Binding ánh xạ GlobalPduId ↔ CanIf L-PDU ↔ CAN ID, không thêm GlobalPduId vào CAN payload. Một message xuất hiện trong config sender/receiver vẫn dùng cùng global identity.
-- Kế hoạch [COM Part 1](implement/com-part1-plan.md) mới ở trạng thái PLAN: 17 file code/test dự kiến (6 sửa, 11 mới), 7 giai đoạn. Lượt này chỉ tạo plan và cập nhật core memory, chưa sửa COM C/header/config.
-- Theo yêu cầu bổ sung, đã tạo [bộ plan Part 1](implement/README.md) gồm COM, PduR, CanIf, hoàn thiện CAN Driver, BSP/timebase/scheduler và integration/system matrix. Mỗi plan có inventory file, contracts, giai đoạn code, tests và exit criteria; đây chưa phải implementation hoặc validation report. Không cộng số file từng plan vì có shared headers/config.
+- [COM Part 1](implement/com-part1-plan.md) đang thực hiện: COM types/config và codec WIP đã có; Init/Send/scheduler/Rx logic chưa hoàn thành.
+- [Bộ plan Part 1](implement/README.md) đã được bổ sung timing profile. Type/config foundation cho PduR, CanIf, system matrix và node root đã có; runtime module, scheduler và board integration vẫn theo plan.
 - Bộ plan không triển khai CanTp/Transfer/UART gateway/app vì ngoài Part 1. Wire profile chưa chốt giữa ba ECU; multi-controller và training Rx adapter là gap tầng dưới được lập plan riêng. Scheduler overrun policy trong plan là lựa chọn local, chưa có source scheduler.
 - Little-endian, unsigned value types và Rx U=0 giữ giá trị cũ là lựa chọn local đề xuất trong plan, chưa được assignment chốt; cần thống nhất wire profile trước ghép ECU. CanTp/deadline monitoring/triggered Tx ngoài Part 1.
 
@@ -48,7 +49,8 @@ Cập nhật: 2026-09-14. Đọc cùng [codebase-map.md](codebase-map.md) trư�
 | CAN layout | Mọi phần CAN ngoài BSP nằm dưới `drivers/can`: `driver`, `config`, `comm`, `test`; board clock/pin/transceiver giữ ở `bsp/can` | cây thư mục `drivers/can/`, `bsp/can/` |
 | CAN init guide | Thứ tự BSP → driver STOPPED → callback/upper init → STARTED → polling, gồm register/state/failure path hiện tại | `docs/can-init-sequence.md` |
 | CAN legacy coupling | Bản tham khảo vẫn callback trực tiếp CanUpper, nhưng đã bị loại khỏi source set Debug_FLASH để không trùng symbol với driver mới | `can_task/`, `.cproject` |
-| Upper layers | Skeleton COM/config đã được gom vào `drivers/can`; CanIf/PduR/CanTp chưa có implementation hoạt động | `drivers/can/comm/`, `drivers/can/config/` |
+| Upper layers | COM types/config + codec WIP; PduR/CanIf có types và Tx-only const config nhưng chưa có runtime implementation; CanTp ngoài Part 1 | `drivers/can/comm/`, `drivers/can/config/` |
+| System profile | Global0x0010, CAN ID0x321, DLC8, COM I-PDU0 → PduR route11 → CanIf TxPdu7 → HTH0; period10/offset1/retries3 | `drivers/can/config/comm_matrix_cfg.h`, `node_cfg.*`, module config files |
 | UART | LPUART1 byte callbacks, baud selection, bounded wait, stats; RX/TX IRQ, chưa có file framing/session | `drivers/uart/Driver_UART.c` |
 | Queue/timebase | Ring storage N giữ N−1 byte; SysTick trả ticks, chưa mặc định ms nếu chưa init 1000 Hz | `middlewares/ring_buffer.c`, `drivers/systick/Driver_SysTick.c` |
 | Tests | Host test deterministic đã pass cho validation, lifecycle, Tx/Rx, busy và bus-off. Board loopback harness đã ARM-compile nhưng chưa có raw log sau khi flash | `tests/host/can/`, `drivers/can/test/Can_LoopbackTest.c` |
@@ -75,6 +77,9 @@ Cập nhật: 2026-09-14. Đọc cùng [codebase-map.md](codebase-map.md) trư�
 
 ## Validation gần nhất
 
+- Type/config conformance ngày 2026-09-15 compile C99 strict và pass: `Part 1 type/config tests passed`; kiểm root pointers, counts, Global ID, local routes, CAN ID/DLC/HTH và timing phase. Xem [validation report](implement/types-config-part1-validation.md).
+- CAN Driver host regression chạy lại sau khi thêm `Can_RxPduType`: `CAN host tests passed`.
+- ARM/full firmware/board chưa chạy cho type/config mới vì `arm-none-eabi-gcc` không có trong PATH shell hiện tại.
 - Lượt lập bộ plan Part 1: đã kiểm tra local links, code fences và encoding trên 9 file Markdown (7 file trong implement và 2 core memory); số dòng inventory của 6 plan khớp số file công bố. Chỉ thay đổi tài liệu, không chạy lại firmware/host tests; các bằng chứng CAN bên dưới thuộc lượt implementation trước.
 
 - Host compile/test bằng GCC với `-Wall -Wextra -Werror`: `CAN host tests passed`.
@@ -83,4 +88,4 @@ Cập nhật: 2026-09-14. Đọc cùng [codebase-map.md](codebase-map.md) trư�
 
 ## Bước tiếp theo được khuyến nghị
 
-Thực hiện giai đoạn 1 trong [plan COM](implement/com-part1-plan.md), sau đó codec → init/Send → scheduler/retry → Rx → host validation. Board integration chờ PduR/CanIf thật, mapping hệ thống và scheduler 1 ms. Driver CAN0-only và khác training Rx API là gap tầng dưới cần xử lý riêng nếu hoàn tất toàn bộ bài Part 1.
+Hoàn thiện và test slot codec COM, sau đó viết Init/Send → scheduler/retry → Rx theo [plan COM](implement/com-part1-plan.md). PduR/CanIf đã có type/config để người dùng viết logic sau. Board integration chờ runtime các tầng, receiver profile, scheduler 1 ms và mapping được cả nhóm xác nhận.

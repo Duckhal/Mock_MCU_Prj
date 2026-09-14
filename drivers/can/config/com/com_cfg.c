@@ -1,7 +1,16 @@
 #include "com_cfg.h"
+#include "../comm_matrix_cfg.h"
 
 #define COM_ARRAY_COUNT(array) ((uint16_t)(sizeof(array) / sizeof((array)[0])))
-#define COM_GLOBAL_PDU_VEHICLE_STATUS (0x0010U)
+
+#if ((COM_VEHICLE_STATUS_PERIOD_TICKS % COMM_MATRIX_TX_PHASE_WINDOW_TICKS) != 0U)
+#error "VehicleStatus period must be a multiple of the 10 ms phase window"
+#endif
+
+#if ((COM_VEHICLE_STATUS_OFFSET_TICKS < COMM_MATRIX_TX_PHASE_OFFSET_MIN_TICKS) || \
+     (COM_VEHICLE_STATUS_OFFSET_TICKS > COMM_MATRIX_TX_PHASE_OFFSET_MAX_TICKS))
+#error "VehicleStatus offset must be in the configured phase range"
+#endif
 
 /*
  * VehicleStatusGroup chứa ba Signal.
@@ -69,13 +78,13 @@ static const Com_IPduConfigType Com_IPduConfigs[] =
 {
     {
         .ipduId = COM_IPDU_VEHICLE_STATUS,
-        .globalPduId = COM_GLOBAL_PDU_VEHICLE_STATUS,
+        .globalPduId = COMM_MATRIX_GLOBAL_PDU_VEHICLE_STATUS,
         .direction = COM_IPDU_TX,
         .lengthBytes = 8U,
         .signalGroupRef = COM_GROUP_VEHICLE_STATUS,
-        .periodTicks = 10U,
-        .initialOffsetTicks = 1U,
-        .maxRetries = 3U
+        .periodTicks = COM_VEHICLE_STATUS_PERIOD_TICKS,
+        .initialOffsetTicks = COM_VEHICLE_STATUS_OFFSET_TICKS,
+        .maxRetries = COM_VEHICLE_STATUS_MAX_RETRIES
     }
 };
 

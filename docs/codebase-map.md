@@ -1,6 +1,6 @@
 # Codebase Map
 
-Khảo sát 2026-09-14. Core memory hành vi và ưu tiên: [context.md](context.md). Trình tự khởi tạo CAN: [can-init-sequence.md](can-init-sequence.md). Scope: source nội bộ, cấu hình build, yêu cầu và hai sơ đồ; không audit toàn bộ vendor headers hoặc chứng minh hoạt động phần cứng.
+Khảo sát cập nhật 2026-09-15. Core memory hành vi và ưu tiên: [context.md](context.md). Trình tự khởi tạo CAN: [can-init-sequence.md](can-init-sequence.md). Scope: source nội bộ, cấu hình build, yêu cầu và hai sơ đồ; không audit toàn bộ vendor headers hoặc chứng minh hoạt động phần cứng.
 
 ## Snapshot
 
@@ -8,7 +8,7 @@ Khảo sát 2026-09-14. Core memory hành vi và ưu tiên: [context.md](context
 - Hiện tại: một workspace C bare-metal S32 Design Studio; CAN Driver mới và board loopback harness đã có source, các upper layer vẫn là skeleton/tài liệu.
 - Entrypoint: [`src/main.c`](../src/main.c); reset/vector/runtime tại `Project_Settings/Startup_Code/`.
 - Build: [`.project`](../.project), [`.cproject`](../.cproject), NXP GCC 6.3 for Arm được cấu hình; không khẳng định toolchain sẵn trong PATH.
-- API dự kiến: [`requirements/API_SPEC.md`](../requirements/API_SPEC.md), DRAFT 0.2. Cấu trúc CAN cục bộ được gom dưới `drivers/can`; nhiều API upper layer vẫn chưa được triển khai.
+- API dự kiến: [`requirements/assumptions/API_SPEC.md`](../requirements/assumptions/API_SPEC.md), DRAFT 0.2. Cấu trúc CAN cục bộ được gom dưới `drivers/can`; nhiều API upper layer vẫn chưa được triển khai.
 
 ## Module map
 
@@ -22,9 +22,10 @@ Khảo sát 2026-09-14. Core memory hành vi và ưu tiên: [context.md](context
 | CAN board harness | [`Can_LoopbackTest.c`](../drivers/can/test/Can_LoopbackTest.c): frame `0x123`, payload `DE AD BE EF`, bounded poll, enum kết quả + LED xanh | Đã ARM-compile; cần flash để có kết quả board thật |
 | CAN host tests | [`test_can_driver.c`](../tests/host/can/test_can_driver.c), [fake register](../tests/host/can/fakes/S32K144.h): validation/lifecycle/Tx/Rx/busy/bus-off | GCC host; pass gần nhất 2026-09-13 |
 | CAN legacy reference | `can_task/driver`, `can_task/upper`, `can_task/test`: bài cũ để đối chiếu | Không còn trong source set Debug_FLASH; không sửa để ghép với driver mới |
-| CAN upper/config skeleton | `drivers/can/comm/`, `drivers/can/config/{canif,cantp,com,pdur}` | Chưa có stack hoạt động; ưu tiên mới là COM Part 1 với fake PduR trước |
-| COM Part 1 plan | [com-part1-plan.md](implement/com-part1-plan.md): phân tích assignment/notes, 17 file code/test dự kiến, 7 giai đoạn và test matrix | PLAN; chưa thay đổi COM implementation. [Assignment](../requirements/assignment_part1_com_signal.md) là nguồn yêu cầu chính |
-| Bộ plan Part 1 | [implement/README.md](implement/README.md): COM, PduR, CanIf, CAN Driver, BSP/scheduler, integration | File inventory/ownership và contracts giữa các plan; chưa có source mới từ các plan |
+| CAN upper/config | `drivers/can/comm/`, `drivers/can/config/{canif,com,pdur}` | COM types/config + codec WIP; PduR/CanIf types và Tx-only config đã có, runtime chưa triển khai; CanTp ngoài Part 1 |
+| System communication profile | [`comm_matrix_cfg.h`](../drivers/can/config/comm_matrix_cfg.h), [`node_cfg.c`](../drivers/can/config/node_cfg.c) | Global0x0010→CAN0x321/DLC8; COM0→route11→CanIf7→HTH0; phase window10, period10, offset1 |
+| COM Part 1 plan | [com-part1-plan.md](implement/com-part1-plan.md): assignment/notes + instructor timing tip, 7 giai đoạn và test matrix | Đang thực hiện; chưa có COM runtime hoặc module validation hoàn chỉnh |
+| Bộ plan Part 1 | [implement/README.md](implement/README.md): COM, PduR, CanIf, CAN Driver, BSP/scheduler, integration | Type/config foundation đã bắt đầu; logic và physical integration vẫn theo plan |
 | UART | [`Driver_UART.c`](../drivers/uart/Driver_UART.c), [header](../drivers/uart/Driver_UART.h): LPUART1 baud/8N1, IRQ byte callbacks, stats, blocking debug TX | NVIC/S32K144; chưa có gateway consumer hoạt động trong main |
 | Byte queue | [`ring_buffer.c`](../middlewares/ring_buffer.c), [header](../middlewares/ring_buffer.h): static byte FIFO, Push/Pop/full/empty | Standard integer/bool types; dự kiến UART gateway, không phải CAN frame queue |
 | Timebase/IRQ | `drivers/systick/`, `drivers/lpit/`, `drivers/nvic/`: ticks, timer callbacks, interrupt enable/priority | S32K144/system clock; phục vụ driver và timeout tương lai |
@@ -62,10 +63,10 @@ CanIf chọn PduR hoặc CanTp theo upper owner; N-PDU không quay lại PduR di
 
 - Thay CAN timing/filter/MB: đọc `drivers/can/config/can/Can_Cfg.*` và `drivers/can/driver/Can.c`; profile hiện chỉ nhận 8 MHz/500 kbit/s. Xác minh board clock/pins trước test vật lý.
 - Thay thứ tự khởi tạo/lifecycle CAN: cập nhật đồng thời `docs/can-init-sequence.md`, driver/config và loopback harness để tài liệu không lệch code.
-- Thêm CanIf: đặt implementation dưới `drivers/can/comm/canif`, config dưới `drivers/can/config/canif`, rồi đăng ký ba callback với CAN Driver.
-- Viết COM: theo `docs/implement/com-part1-plan.md`; giữ code trong `drivers/can/comm/com` và config trong `drivers/can/config/com`. Host tests ở `tests/host/com` với fake PduR. Plan thay header Tx tick có nowMs bằng invocation 1 ms, bỏ triggered/Rx deadline khỏi Part 1; source hiện vẫn là skeleton cũ.
+- Thêm CanIf logic: giữ types ở `drivers/can/comm/canif/canif_types.h`, config ở `drivers/can/config/canif`, rồi tạo API/adapter và đăng ký ba callback với CAN Driver theo plan. Profile hiện chỉ có Tx L-PDU.
+- Viết COM: theo `docs/implement/com-part1-plan.md`; types/config và codec đang có, bước kế là codec tests rồi Init/Send. Host tests ở `tests/host/com` với fake PduR. Main Tx tick sẽ là invocation 1 ms; triggered/Rx deadline ngoài Part 1.
 - Các tầng còn lại: theo mục lục `docs/implement/README.md`; dùng chung `comm_types.h`/`pdur_com.h` và module config, không duplicate definitions theo mỗi plan. Integration plan có validator system matrix và trace 19 deliverables của assignment.
-- Thêm route: freeze schema CanIf/PduR và reverse confirmation; skeleton config hiện ở `drivers/can/config`, chưa có implementation route hoạt động.
+- Thêm route: schema PduR types và Tx route const đã có; tiếp theo tạo public contract, validation/lookup và reverse confirmation. Không đưa period/offset vào PduR.
 - Thay UART binary I/O: giữ driver byte callbacks, xây gateway parser/queue riêng; chú ý loss/error và TX kick. Không tìm CLI Task 5 vì không có `tasks/` trong bản này.
 - Thêm timeout: inject clock ở module logic; xác định tick→ms và rollover. Không đưa state machine vào SysTick ISR.
 - Thay build source set: sửa cấu hình S32DS/`.cproject`, regenerate output; kiểm tra config đang chọn. Debug_FLASH có nhiều source roots hơn Release_FLASH/Debug_RAM/Release_RAM.
@@ -76,6 +77,7 @@ CanIf chọn PduR hoặc CanTp theo upper owner; N-PDU không quay lại PduR di
 - Tài liệu: `git diff --check`, `git diff --stat`, kiểm local Markdown links và đối chiếu tên/signature với header/source.
 - Build firmware: import project vào S32DS, chọn **Debug_FLASH**, Build Project. Generated `Debug_FLASH/makefile` có target `all`; chỉ dùng `make -C Debug_FLASH all` trong môi trường đã nạp đúng S32DS/GCC tools. Chưa thực thi lệnh build trong khảo sát này.
 - Host test hiện chạy bằng GCC trực tiếp và đã pass; test fake thanh ghi không thay bằng chứng phần cứng.
+- Type/config conformance runner: `powershell -NoProfile -ExecutionPolicy Bypass -File tests/host/config/run_tests.ps1`; pass gần nhất 2026-09-15. Báo cáo: [types-config-part1-validation.md](implement/types-config-part1-validation.md).
 - Board harness hiện có một `main` duy nhất ở `src/main.c`; xem `g_CanLoopbackTestResult`, trong đó `CAN_LOOPBACK_TEST_PASSED` mới là thành công. Chưa có raw board log sau flash.
 - API_SPEC mục 19 có LL-01..LL-13 làm test design: invalid config, bounded wait, PDU shared HTH, buffer lifetime, filtering, stale completion, rollover, overflow và interoperability.
 - Board tests phải ghi firmware/config/node/wiring/bitrate/input/expected/actual; loopback không thay physical three-node test, LED không chứng minh file byte-correct.

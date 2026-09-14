@@ -1,10 +1,10 @@
 # Plan triển khai tầng COM — Assignment Part 1
 
-Trạng thái: **PLAN, chưa triển khai**. Mục tiêu là viết COM theo từng giai đoạn có thể đọc, build và kiểm thử độc lập. Tài liệu mô tả code sẽ viết; source C không được thay đổi trong lượt lập plan này.
+Trạng thái: **ĐANG THỰC HIỆN**. Types/config và slot codec đang được viết trước; runtime COM và validation report chưa hoàn thành. Mục tiêu là triển khai theo từng giai đoạn có thể đọc, build và kiểm thử độc lập.
 
 ## 1. Căn cứ và phạm vi
 
-Nguồn yêu cầu chính: [assignment_part1_com_signal.md](../../requirements/assignment_part1_com_signal.md), đặc biệt mục 2, 7–16, 25, 27, 31, 36–39. [part1_architecture_notes.md](../../requirements/part1_architecture_notes.md) giải thích lý do thiết kế, không thay thế assignment. [API_SPEC.md](../../requirements/API_SPEC.md) và skeleton cũ cần được cập nhật theo assignment ở các điểm khác nhau.
+Nguồn yêu cầu chính: [assignment_part1_com_signal.md](../../requirements/assignment_part1_com_signal.md), đặc biệt mục 2, 7–16, 25, 27, 31, 36–39. [part1_architecture_notes.md](../../requirements/part1_architecture_notes.md) giải thích lý do thiết kế, không thay thế assignment. Tip timing bổ sung của người giao bài ngày 2026-09-14 được áp dụng như profile cấu hình project: period Tx là bội của cửa sổ 10 ms, offset khác nhau trong 1..9 ms. [API_SPEC.md](../../requirements/assumptions/API_SPEC.md) và skeleton cũ cần được cập nhật theo assignment ở các điểm khác nhau.
 
 **Hoàn thành COM:** model Signal/Group/I-PDU, validation, pack/unpack, Send/ReceiveSignal, scheduler 1 ms, bounded retry/drop, Update Bit, diagnostics và host tests với PduR giả.
 
@@ -48,7 +48,11 @@ Những lựa chọn dưới đây là đề xuất của plan ở nơi assignme
 
 Slot width và C type không cần bằng nhau: slot16/type uint16 chỉ nhận 0..32767; slot24/type uint32 chỉ nhận 0..8388607. Giá trị hợp lệ phải vừa cả software type lẫn payload width. Không có C type uint24; không dùng cast con trỏ payload sang integer.
 
-Offset theo đúng thuật toán mục 13: `counter=offset`; mỗi invocation giảm nếu >0 rồi xét 0. Nếu invocation đầu ở t=1 ms, offset=1 hoặc offset=0 đều due ngay invocation đó; offset=0 không tự phát trong `Com_Init()`. Offset=1/period=10 cho lịch 1,11,21…; offset=10/period=10 cho lịch 10,20,30…. Không áp thêm ràng buộc offset < period vì đề không yêu cầu.
+Offset theo đúng thuật toán mục 13: `counter=offset`; mỗi invocation giảm nếu >0 rồi xét 0. Nếu invocation đầu ở t=1 ms, offset=1 hoặc offset=0 đều due ngay invocation đó; offset=0 không tự phát trong `Com_Init()`.
+
+Profile timing bổ sung của project dùng `COMM_MATRIX_TX_PHASE_WINDOW_TICKS = 10`: mọi Tx period là bội của 10 và mỗi Tx I-PDU chọn một offset riêng trong 1..9. Ví dụ A `(20,1)` due tại 1,21,41…; B `(20,3)` tại 3,23,43…; C `(30,5)` tại 5,35,65…. Rule này phân tán nominal due time và giữ phase theo modulo 10. Nó không bảo đảm mọi **attempt** khác thời điểm, vì retry sau BUSY/NOT_OK diễn ra ngay tick kế tiếp và có thể chạm nominal slot của PDU khác.
+
+COM core chỉ bắt buộc kiểm quy tắc tổng quát của assignment: main tick 1 ms, period hợp lệ và offset biểu diễn được. Rule cửa sổ 10 ms/offset 1..9/offset không trùng thuộc generated project config và validator hệ thống, tránh biến một tip profile thành giới hạn cứng của module COM có thể tái sử dụng.
 
 Phạm vi counter đề xuất: `uint16_t` cho period/offset (period 1..65535 ticks, offset 0..65535), `uint8_t` cho retry (0..255). Tại retry max=255, số attempts tối đa là **256**, nên diagnostics/test tính số attempts bằng kiểu rộng hơn uint8.
 
@@ -110,7 +114,7 @@ Mỗi test executable hỗ trợ chọn case bằng argv; runner chạy mỗi ca
 
 - Plan hiện tại: `docs/implement/com-part1-plan.md`.
 - Khi thực thi: tạo `docs/implement/com-part1-validation.md` chứa mapping test ID → yêu cầu → kết quả/log path/toolchain; không ghi PASS trước khi chạy.
-- Giai đoạn đầu đồng bộ `requirements/API_SPEC.md`, `docs/context.md`, `docs/codebase-map.md` với API đã chọn.
+- Giai đoạn đầu đồng bộ `requirements/assumptions/API_SPEC.md`, `docs/context.md`, `docs/codebase-map.md` với API đã chọn.
 - `.cproject`: cấu hình build host không dùng source root firmware. Trong giai đoạn chỉ có COM và fake, exclude `drivers/can/comm/com/com.c` khỏi firmware build nếu chưa có PduR thật; compile object COM riêng. Chỉ enable lại khi đã có implementation PduR_ComTransmit để tránh undefined symbol.
 - Giai đoạn tích hợp cần các file PduR/CanIf và config của chúng, scheduler trong `src/main.c`, cùng board harness riêng `drivers/can/test/Com_LoopbackTest.c/.h`. Đây là hạng mục phụ thuộc, không tính giả thành COM core đã hoàn thành.
 
@@ -131,7 +135,7 @@ Rx dùng buffer đã commit của riêng PDU; ReceiveSignal decode slot trong bu
 
 Capacity local khởi đầu đề xuất: 8 I-PDU, 8 Group, 64 Signal, mỗi PDU dài 1..8 byte. Giới hạn này đủ tối đa 8 slot byte/PDU; đây là giới hạn implementation local, không phải yêu cầu của đề. Static assert/check kích thước, tránh heap.
 
-Init validation phải kiểm tra pointer/count/capacity trước vòng lặp; duplicate IDs; enum; signal/group mồ côi hoặc được tham chiếu hai lần; group rỗng; exactly one group/PDU; slot alignment, length, overlap, bounds; initial value; period/offset/retry range. Dùng kiểu đủ rộng khi cộng start+length, validate trước khi nhân/shift.
+Init validation phải kiểm tra pointer/count/capacity trước vòng lặp; duplicate IDs; enum; signal/group mồ côi hoặc được tham chiếu hai lần; group rỗng; exactly one group/PDU; slot alignment, length, overlap, bounds; initial value; period/offset/retry range. Dùng kiểu đủ rộng khi cộng start+length, validate trước khi nhân/shift. Validator profile kiểm thêm `periodTicks % 10 == 0`, offset trong 1..9 và offset không trùng giữa các Tx I-PDU.
 
 GlobalPduId validation có hai cấp: local config không gán một ID cho hai logical PDU khác nhau; toàn hệ thống cần message matrix ba ECU. Unit test của một ECU không chứng minh uniqueness/binding toàn hệ thống. Tx-only và Rx-only của cùng message dùng cấu hình ở các test process khác nhau, không tạo hai logical message trùng ID để giả loopback.
 
@@ -172,7 +176,7 @@ Mỗi giai đoạn chỉ chuyển tiếp sau khi test liên quan pass. Không c�
 
 1. Định nghĩa các type/config/limit ở mục 6 và contract mục 7.
 2. Đổi MainFunctionTx sang void/no timestamp; sửa comment SendSignal không đánh dấu pending, không dùng từ shadow nếu chưa có commit API.
-3. Config mẫu: VehicleSpeed uint16 slot16 start0; Gear uint8 slot8 start16; AliveCounter uint8 slot8 start24; một group VehicleStatus; I-PDU Tx length8, GlobalPduId 0x0010, period10, offset1, maxRetries3.
+3. Config mẫu: VehicleSpeed uint16 slot16 start0; Gear uint8 slot8 start16; AliveCounter uint8 slot8 start24; một group VehicleStatus; I-PDU Tx length8, GlobalPduId 0x0010, period10, offset1, maxRetries3. Khai báo rõ tick 1 ms và phase window 10 ms; I-PDU bổ sung sau này phải có period bội 10 và offset riêng trong 1..9.
 4. Local IDs đặt tên; CAN ID 0x321 ở ví dụ assignment thuộc binding tích hợp, không đưa vào Com_IPduConfigType.
 5. Fake PduR trả sequence có thể điều khiển và lưu bản copy payload từng attempt. Test record storage full phải fail rõ, không ghi ngoài mảng.
 
@@ -307,6 +311,8 @@ Nếu cả attempts ở 10,11,12,13 đều fail: drop ở 13, U/data giữ nguy�
 | COM-TX-08 | Period mới khi pending không reset retryCount | §13 |
 | COM-TX-09 | COMM_OK copy bytes trước clear; mọi non-OK giữ U theo budget | §16, §25 |
 | COM-TX-10 | TxConfirmation đến sau Send mới không xóa U mới/đổi lịch | Notes §18–19 |
+| COM-TX-11 | Profile A(20,1), B(20,3), C(30,5) | Nominal due giữ phase 1/3/5 modulo10; không collision nominal |
+| COM-TX-12 | Retry của A chạm nominal slot B | Mỗi PDU vẫn được xử lý một lần theo config order; tip phase không làm mất retry semantics |
 | COM-RX-01 | U=1 decode đúng, U=0 giữ default/latest | §31 + Rx policy đề xuất |
 | COM-RX-02 | Null/unknown ID/wrong direction/short/long frame → không commit | Local input contract |
 | COM-RX-03 | Slot cuối lỗi range → không update nửa frame | Local atomic commit |

@@ -1,6 +1,6 @@
 # Plan triển khai PduR — Part 1 Direct CAN Binding
 
-Trạng thái: **PLAN, chưa có implementation PduR**. Đọc cùng [COM plan](com-part1-plan.md), [CanIf plan](canif-part1-plan.md) và [mục lục](README.md).
+Trạng thái: **TYPES/CONFIG ĐÃ CÓ, LOGIC CHƯA TRIỂN KHAI**. `pdur_types.h` và direct Tx route config đã được tạo; public API, lookup, validation runtime và callback routing vẫn theo các giai đoạn bên dưới. Đọc cùng [COM plan](com-part1-plan.md), [CanIf plan](canif-part1-plan.md) và [mục lục](README.md).
 
 ## 1. Yêu cầu, hiện trạng và ranh giới
 
@@ -8,7 +8,9 @@ Nguồn chính: [assignment](../../requirements/assignment_part1_com_signal.md) 
 
 PduR sở hữu route logical PDU; Direct Binding chuyển payload nguyên vẹn. PduR không đọc signal/U, không biết CAN ID/HTH/HRH/controller, không thêm GlobalPduId vào wire data. GlobalPduId trong route chỉ để đối chiếu model và trace.
 
-Hiện tại `drivers/can/config/pdur/pdur_cfg.c/.h` rỗng; chưa có thư mục implementation. `API_SPEC.md` đã phác thảo direct route nhưng chứa cả CanTp/Transfer ngoài Part 1.
+Tip phase 10 ms/offset 1..9 của người giao bài không tạo field hay validation trong PduR. PduR route ngay từng request COM đưa xuống; period, offset, nominal phase và retry vẫn hoàn toàn thuộc COM/config hệ thống.
+
+Hiện tại `drivers/can/comm/pdur/pdur_types.h` và `drivers/can/config/pdur/pdur_cfg.c/.h` định nghĩa profile Tx COM0→CanIf7, route11, Global0x0010. Chưa có `pdur.c/.h` hoặc runtime state. `API_SPEC.md` đã phác thảo direct route nhưng chứa cả CanTp/Transfer ngoài Part 1.
 
 Phạm vi: route COM→CanIf, CanIf→COM và TxConfirmation ngược về COM. Một route một destination; không fan-out/gateway/multiplexing/queue/retry/deadline monitor. PduR không cần MainFunction vì không có việc deferred riêng trong baseline.
 

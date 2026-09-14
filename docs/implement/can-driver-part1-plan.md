@@ -45,7 +45,7 @@ Host tests đã báo pass ở lượt trước chỉ là bằng chứng phạm v
 | 11 | `drivers/can/test/Can_LoopbackTest.h` | Kết quả/test profile interface |
 | 12 | `drivers/can/test/Can_LoopbackTest.c` | Migration config API và board evidence cho controller được hỗ trợ |
 
-Tài liệu ngoài count: cập nhật `docs/can-init-sequence.md`, `requirements/API_SPEC.md`, core memory; tạo `docs/implement/can-driver-part1-validation.md` khi chạy tests. BSP CAN1 work thuộc [BSP plan](bsp-scheduler-part1-plan.md).
+Tài liệu ngoài count: cập nhật `docs/can-init-sequence.md`, `requirements/assumptions/API_SPEC.md`, core memory; tạo `docs/implement/can-driver-part1-validation.md` khi chạy tests. BSP CAN1 work thuộc [BSP plan](bsp-scheduler-part1-plan.md).
 
 ## 4. Model/API dự kiến
 

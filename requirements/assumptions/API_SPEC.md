@@ -7,12 +7,12 @@
 | Tên tài liệu | Mock Multi-ECU Module API Specification |
 | Trạng thái | **DRAFT — chưa dùng làm contract implementation chính thức** |
 | Phiên bản | 0.2 — review tầng thấp, 2026-09-13 |
-| Nguồn yêu cầu | [`requirements/README.md`](README.md) |
+| Nguồn yêu cầu | [`requirements/README.md`](../README.md) |
 | Phạm vi | ECU1, ECU2, ECU3; Classic CAN; UART gateway tại ECU1 và ECU3 |
 
 Tài liệu này liệt kê API dự kiến cho từng module và giải thích lý do cần từng API. Đây là thiết kế tối giản lấy cảm hứng từ AUTOSAR, không phải bản sao API AUTOSAR đầy đủ.
 
-Ba ECU do **ba người phát triển độc lập**. API C trong tài liệu là đề xuất cho workspace này; không yêu cầu firmware khác có cùng source, folder, tên hàm, PDU ID hoặc HTH/HRH. Điểm tích hợp bắt buộc là **contract trên đường truyền** và hành vi có thể kiểm thử (mục 16). Hai sơ đồ [overview](Mock_MCU-Overview.png) và [Tx/Rx](<Mock_MCU-Tx-Rx Flow.png>) lần lượt là mô hình hoàn thiện và luồng tạm thời, không phải bằng chứng stack đã được hiện thực.
+Ba ECU do **ba người phát triển độc lập**. API C trong tài liệu là đề xuất cho workspace này; không yêu cầu firmware khác có cùng source, folder, tên hàm, PDU ID hoặc HTH/HRH. Điểm tích hợp bắt buộc là **contract trên đường truyền** và hành vi có thể kiểm thử (mục 16). Hai sơ đồ [overview](../Mock_MCU-Overview.png) và [Tx/Rx](<Mock_MCU-Tx-Rx Flow.png>) lần lượt là mô hình hoàn thiện và luồng tạm thời, không phải bằng chứng stack đã được hiện thực.
 
 **Ưu tiên hiện tại:** BSP/timebase, CAN Driver, CanIf, PduR direct và kiểm thử single-frame. Các mục application, COM nghiệp vụ, CanTp, Transfer Service và UART framing là **DEFERRED / DRAFT**; chỉ triển khai sau khi các contract tương ứng được chốt. Có thể dùng test stub làm upper consumer ngay từ đầu, không cần hoàn thiện app để kiểm thử tầng thấp.
 
@@ -20,11 +20,11 @@ Ba ECU do **ba người phát triển độc lập**. API C trong tài liệu l�
 
 | Bằng chứng | Kết luận cho spec |
 |---|---|
-| [`src/main.c`](../src/main.c) | Entrypoint hiện tại là demo counter/SVC, chưa khởi tạo communication stack. |
-| [`Can.c`](../can_task/driver/src/Can.c), [`Can_Cfg.c`](../can_task/driver/src/Can_Cfg.c) | Driver tham khảo có một TX MB, một RX MB filter `0x123`; init trả `void`, bit timing cố định và callback trực tiếp tới CanUpper. |
-| [`CanUpper.c`](../can_task/upper/src/CanUpper.c) | Một Tx PDU, một Rx PDU, confirmation bằng HTH, RX buffer một frame. Chưa có CanIf/PduR độc lập. |
-| [`can_task/test/main.c`](../can_task/test/main.c) | TC-001..004 bị bao bởi `#if 0`; báo cáo lịch sử không thay thế raw log chạy lại. |
-| [`Driver_UART.c`](../drivers/uart/Driver_UART.c), [`ring_buffer.c`](../middlewares/ring_buffer.c) | Có callback byte RX/TX và queue byte; chưa có gateway packet/session implementation. |
+| [`src/main.c`](../../src/main.c) | Entrypoint hiện tại là demo counter/SVC, chưa khởi tạo communication stack. |
+| [`Can.c`](../../can_task/driver/src/Can.c), [`Can_Cfg.c`](../../can_task/driver/src/Can_Cfg.c) | Driver tham khảo có một TX MB, một RX MB filter `0x123`; init trả `void`, bit timing cố định và callback trực tiếp tới CanUpper. |
+| [`CanUpper.c`](../../can_task/upper/src/CanUpper.c) | Một Tx PDU, một Rx PDU, confirmation bằng HTH, RX buffer một frame. Chưa có CanIf/PduR độc lập. |
+| [`can_task/test/main.c`](../../can_task/test/main.c) | TC-001..004 bị bao bởi `#if 0`; báo cáo lịch sử không thay thế raw log chạy lại. |
+| [`Driver_UART.c`](../../drivers/uart/Driver_UART.c), [`ring_buffer.c`](../../middlewares/ring_buffer.c) | Có callback byte RX/TX và queue byte; chưa có gateway packet/session implementation. |
 
 `EXISTING` chỉ xác nhận sự tồn tại của API; không có nghĩa contract mới đã pass test. Khi README/sơ đồ cũ khác chi tiết contract ở bản 0.2, dùng bản này cho đề xuất API trong workspace; yêu cầu nghiệp vụ chưa chốt vẫn phải được thống nhất riêng.
 
@@ -571,7 +571,7 @@ Packet format cụ thể chưa được đóng băng; API không phụ thuộc m
 
 ## 12. UART Driver — hardware byte transfer
 
-Các API hiện có trong [`Driver_UART.h`](../drivers/uart/Driver_UART.h) cung cấp byte I/O cho baseline; gateway framing/backpressure và recovery vẫn cần thiết kế riêng.
+Các API hiện có trong [`Driver_UART.h`](../../drivers/uart/Driver_UART.h) cung cấp byte I/O cho baseline; gateway framing/backpressure và recovery vẫn cần thiết kế riêng.
 
 ```c
 UART_Status_t LPUART1_Init(uint32_t baudRate);
@@ -602,7 +602,7 @@ void LPUART1_ResetStats(void);
 
 ## 13. RingBuffer middleware
 
-Các API hiện có trong [`ring_buffer.h`](../middlewares/ring_buffer.h) có thể tái sử dụng cho UART byte queue.
+Các API hiện có trong [`ring_buffer.h`](../../middlewares/ring_buffer.h) có thể tái sử dụng cho UART byte queue.
 
 ```c
 RingBuffer_Status_t RingBuffer_Init(RingBuffer_t *rb,

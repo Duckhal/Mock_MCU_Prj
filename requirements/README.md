@@ -4,7 +4,7 @@
 
 Tài liệu này giải thích cách dùng bài tập CAN độc lập trong [`can_task/`](../can_task/) làm nguồn tham khảo cho mock project ba ECU trong thư mục này.
 
-API contract sơ bộ cho từng module được mô tả tại [`API_SPEC.md`](API_SPEC.md).
+API contract sơ bộ cho từng module được mô tả tại [`API_SPEC.md`](assumptions/API_SPEC.md).
 
 Hai phần phải được hiểu là hai bài tập khác nhau:
 
@@ -31,7 +31,7 @@ Sơ đồ hiện tại xác định:
 
 ### 2.2 Sơ đồ Tx/Rx dự kiến
 
-![Luồng Tx và Rx dự kiến](<Mock_MCU-Tx-Rx Flow.png>)
+![Luồng Tx và Rx dự kiến](<assumptions/Mock_MCU-Tx-Rx Flow.png>)
 
 Sơ đồ lấy cảm hứng từ AUTOSAR nhưng project không đặt mục tiêu sao chép đầy đủ AUTOSAR. Các ranh giới quan trọng cần giữ là:
 

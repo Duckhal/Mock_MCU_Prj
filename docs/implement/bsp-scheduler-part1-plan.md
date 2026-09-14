@@ -1,6 +1,6 @@
 # Plan BSP CAN, timebase và scheduler 1 ms — Part 1
 
-Trạng thái: **PLAN**. Nguồn hành vi tick: [assignment](../../requirements/assignment_part1_com_signal.md) §12–14,27; [notes](../../requirements/part1_architecture_notes.md) §10,20. Source hiện có: [board_can.c](../../bsp/can/board_can.c), [SysTick](../../drivers/systick/Driver_SysTick.c), [main](../../src/main.c).
+Trạng thái: **PLAN**. Nguồn hành vi tick: [assignment](../../requirements/assignment_part1_com_signal.md) §12–14,27; [notes](../../requirements/part1_architecture_notes.md) §10,20; tip timing bổ sung của người giao bài ngày 2026-09-14. Source hiện có: [board_can.c](../../bsp/can/board_can.c), [SysTick](../../drivers/systick/Driver_SysTick.c), [main](../../src/main.c).
 
 ## 1. Mục tiêu và hiện trạng
 
@@ -18,6 +18,7 @@ Không tự đổi pin/wiring theo ví dụ CAN1 trong đề. Clock/pin/transcei
 - COM tick0 lấy mốc khi tất cả module đã init và controller STARTED; invocation đầu sau 1 ms.
 - Can_MainFunction_Write trước Com_MainFunctionTx giải phóng completion resource trước retry; Can_MainFunction_Error/Read cũng chạy main context.
 - Không gọi nhiều lần COM liên tiếp để bù missed ticks. Với counter-based COM, một lần gọi là một logical millisecond; task trễ phải được ghi thành lỗi cadence, không tuyên bố schedule wall-clock vẫn đúng.
+- Scheduler vẫn gọi COM đúng mỗi 1 ms. Cửa sổ phase 10 ms và offset 1..9 là dữ liệu cấu hình I-PDU, không phải scheduler chia thành chín callback riêng.
 
 Policy local đề xuất khi delta tick>1: latch scheduler overrun, dừng phát COM mới, vẫn service CAN events để drain accepted requests; yêu cầu restart test có kiểm soát. Không tự Com_Init lần hai hoặc phát burst catch-up. Phương án nâng cao scheduler skip-ahead theo timestamp nằm ngoài counter model Part 1.
 
@@ -100,6 +101,7 @@ Main khởi tạo BSP/timebase/CAN/CanIf/PduR/COM theo integration plan; run sch
 | SCHED-05 | Tick100→103 | Latch overrun, không gọi COM ba lần |
 | SCHED-06 | Overrun khi CAN request đã accepted | Vẫn drain driver events, không tạo COM request mới |
 | SCHED-07 | Null status/poll trước Init | Return/counter xác định, không gọi stack |
+| SCHED-08 | I-PDU offset 1/3/5 trong cửa sổ 10 ms | Scheduler cung cấp đủ tick 1 ms; COM quan sát đúng nominal phases |
 | BSP-01 | Invalid profile/poll limit | Fail trước ghi sai hardware |
 | BSP-02 | Watchdog/SOSC wait không đạt | Return lỗi hữu hạn, chưa chạy Can_Init |
 | BSP-03 | Board thực sau init | Clock/pins/tick đo đúng profile |
