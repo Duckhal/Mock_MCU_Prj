@@ -1,0 +1,105 @@
+<mxGraphModel dx="1187" dy="534" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+  <root>
+    <mxCell id="0" />
+    <mxCell id="1" parent="0" />
+    <mxCell id="title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;fontSize=20;fontStyle=1;fontColor=#D95300;" value="&lt;b&gt;ASSIGNMENT PART 1 - END-TO-END FLOW: TX ECU → CLASSICAL CAN → RX ECU&lt;/b&gt;" vertex="1">
+      <mxGeometry height="40" width="1200" x="500" y="30" as="geometry" />
+    </mxCell>
+    <mxCell id="tx_label" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF4E6;strokeColor=#D95300;strokeWidth=2;fontColor=#D95300;align=center;fontSize=14;" value="&lt;b&gt;TX ECU&lt;/b&gt;" vertex="1">
+      <mxGeometry height="38" width="760" x="120" y="100" as="geometry" />
+    </mxCell>
+    <mxCell id="rx_label" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E7F5FF;strokeColor=#1864AB;strokeWidth=2;fontColor=#1864AB;align=center;fontSize=14;" value="&lt;b&gt;RX ECU&lt;/b&gt;" vertex="1">
+      <mxGeometry height="38" width="760" x="1320" y="100" as="geometry" />
+    </mxCell>
+    <mxCell id="tx_upper" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D95300;strokeWidth=2;fontColor=#000000;" value="&lt;b&gt;UPPER / TEST STUB&lt;/b&gt;&lt;br&gt;&lt;div style=&quot;text-align:left;font-size:11px;&quot;&gt;• Tạo giá trị signal dùng để test giao tiếp.&lt;br&gt;• Không biết CAN ID, HTH, Message Buffer hay register FlexCAN.&lt;br&gt;• Gọi &lt;b&gt;Com_SendSignal(SignalId, &amp;amp;value)&lt;/b&gt;.&lt;/div&gt;" vertex="1">
+      <mxGeometry height="85" width="760" x="120" y="170" as="geometry" />
+    </mxCell>
+    <mxCell id="tx_com" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8F9FA;strokeColor=#0088A8;strokeWidth=2;fontColor=#000000;" value="&lt;b&gt;COM MODULE&lt;/b&gt;&lt;br&gt;&lt;div style=&quot;text-align:left;font-size:11px;&quot;&gt;• &lt;b&gt;Com_SendSignal()&lt;/b&gt; chỉ cập nhật COM state, không phát CAN ngay.&lt;br&gt;• Mapping: &lt;b&gt;Signal → Signal Group → I-PDU&lt;/b&gt;.&lt;br&gt;• Mỗi Signal Slot: &lt;b&gt;EncodedSignal = (Payload &amp;lt;&amp;lt; 1) | UpdateBit&lt;/b&gt;.&lt;br&gt;• bit0 = Update Bit; slot byte-aligned, độ dài là bội số 8 bit.&lt;br&gt;• I-PDU là đơn vị scheduling/transmission.&lt;/div&gt;" vertex="1">
+      <mxGeometry height="125" width="760" x="120" y="315" as="geometry" />
+    </mxCell>
+    <mxCell id="tx_upper_com" edge="1" parent="1" source="tx_upper" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0088A8;strokeWidth=2;fontColor=#000000;labelBackgroundColor=#FFFFFF;" target="tx_com" value="&lt;b&gt;Com_SendSignal(SignalId, &amp;amp;value)&lt;/b&gt;">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="tx_com_sched" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#E3FAFC;strokeColor=#0C8599;fontColor=#000000;fontSize=10;align=left;" value="&lt;b&gt;COM TX SCHEDULER&lt;/b&gt;&lt;br&gt;• Com_MainFunctionTx() gọi chu kỳ 1 ms.&lt;br&gt;• period_ms / initial_offset_ms&lt;br&gt;• pending / retry_count / max_retries&lt;br&gt;• Chỉ khi I-PDU đến kỳ mới gọi PduR." vertex="1">
+      <mxGeometry height="125" width="290" x="900" y="315" as="geometry" />
+    </mxCell>
+    <mxCell id="tx_pdur" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8F9FA;strokeColor=#7048E8;strokeWidth=2;fontColor=#000000;" value="&lt;b&gt;PduR - DIRECT ROUTING&lt;/b&gt;&lt;br&gt;&lt;div style=&quot;text-align:left;font-size:11px;&quot;&gt;• Part 1 chỉ có &lt;b&gt;Direct CAN Binding&lt;/b&gt;, không có CanTp.&lt;br&gt;• Nhận &lt;b&gt;ComIPduId + PduInfo&lt;/b&gt; từ COM.&lt;br&gt;• Tra routing table và map &lt;b&gt;ComIPduId → CanIf TxPduId&lt;/b&gt;.&lt;br&gt;• Không biết CAN ID, HTH hoặc nội dung signal.&lt;/div&gt;" vertex="1">
+      <mxGeometry height="110" width="760" x="120" y="520" as="geometry" />
+    </mxCell>
+    <mxCell id="tx_com_pdur" edge="1" parent="1" source="tx_com" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#7048E8;strokeWidth=2;fontColor=#000000;labelBackgroundColor=#FFFFFF;" target="tx_pdur" value="&lt;b&gt;PduR_ComTransmit(ComIPduId, &amp;amp;PduInfo)&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#555555&quot;&gt;I-PDU payload + length; ID là metadata argument&lt;/font&gt;">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="tx_canif" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8F9FA;strokeColor=#0CA678;strokeWidth=2;fontColor=#000000;" value="&lt;b&gt;CanIf - CAN INTERFACE&lt;/b&gt;&lt;br&gt;&lt;div style=&quot;text-align:left;font-size:11px;&quot;&gt;• Mapping local: &lt;b&gt;TxPduId → CAN ID + HTH&lt;/b&gt;.&lt;br&gt;• Baseline 1:1: một Tx L-PDU ứng với một CAN ID.&lt;br&gt;• Tạo Can_PduType / software handle và gọi CAN Driver.&lt;br&gt;• Không cần biết Message Buffer vật lý.&lt;/div&gt;" vertex="1">
+      <mxGeometry height="105" width="760" x="120" y="705" as="geometry" />
+    </mxCell>
+    <mxCell id="tx_pdur_canif" edge="1" parent="1" source="tx_pdur" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0CA678;strokeWidth=2;fontColor=#000000;labelBackgroundColor=#FFFFFF;" target="tx_canif" value="&lt;b&gt;CanIf_Transmit(TxPduId, &amp;amp;PduInfo)&lt;/b&gt;">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="tx_driver" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8F9FA;strokeColor=#D95300;strokeWidth=2;fontColor=#000000;" value="&lt;b&gt;CAN DRIVER - S32K144 FlexCAN&lt;/b&gt;&lt;br&gt;&lt;div style=&quot;text-align:left;font-size:11px;&quot;&gt;• Nhận &lt;b&gt;HTH + Can_PduType&lt;/b&gt;.&lt;br&gt;• Mapping: &lt;b&gt;HTH → Tx Hardware Object → Controller → Message Buffer&lt;/b&gt;.&lt;br&gt;• Ghi CAN ID, DLC, payload vào FlexCAN Tx MB và kích hoạt transmit.&lt;br&gt;• Driver không biết PduR route hay signal.&lt;/div&gt;" vertex="1">
+      <mxGeometry height="110" width="760" x="120" y="875" as="geometry" />
+    </mxCell>
+    <mxCell id="tx_canif_driver" edge="1" parent="1" source="tx_canif" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#D95300;strokeWidth=2;fontColor=#000000;labelBackgroundColor=#FFFFFF;" target="tx_driver" value="&lt;b&gt;Can_Write(HTH, &amp;amp;CanPdu)&lt;/b&gt;">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="tx_hw" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#495057;strokeWidth=1.5;fontColor=#000000;" value="&lt;b&gt;FLEXCAN TX HARDWARE OBJECT / MESSAGE BUFFER&lt;/b&gt;&lt;br&gt;&lt;div style=&quot;text-align:left;font-size:11px;&quot;&gt;• CS: CODE, DLC, IDE/RTR&lt;br&gt;• ID: Standard CAN ID 11-bit&lt;br&gt;• DATA: 0..8 byte payload&lt;br&gt;• Protocol engine xử lý arbitration, CRC, ACK và bit timing.&lt;/div&gt;" vertex="1">
+      <mxGeometry height="105" width="760" x="120" y="1045" as="geometry" />
+    </mxCell>
+    <mxCell id="tx_driver_hw" edge="1" parent="1" source="tx_driver" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#495057;strokeWidth=2;fontColor=#000000;labelBackgroundColor=#FFFFFF;" target="tx_hw" value="Program Tx Message Buffer">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="can_bus" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E6FCF5;strokeColor=#0CA678;strokeWidth=2;fontColor=#000000;align=center;" value="&lt;b&gt;CLASSICAL CAN BUS&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#555555&quot;&gt;Wire-visible contract: CAN ID + DLC + DATA (0..8 byte). GlobalPduId / TxPduId / RxPduId không được serialize trên bus.&lt;/font&gt;" vertex="1">
+      <mxGeometry height="65" width="680" x="760" y="1230" as="geometry" />
+    </mxCell>
+    <mxCell id="tx_hw_bus" edge="1" parent="1" source="tx_hw" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0CA678;strokeWidth=2;fontColor=#000000;labelBackgroundColor=#FFFFFF;" target="can_bus" value="CAN frame">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="rx_hw" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#495057;strokeWidth=1.5;fontColor=#000000;" value="&lt;b&gt;FLEXCAN RX HARDWARE OBJECT / MESSAGE BUFFER&lt;/b&gt;&lt;br&gt;&lt;div style=&quot;text-align:left;font-size:11px;&quot;&gt;• Hardware Acceptance Filter kiểm tra CAN ID bằng configured ID + mask.&lt;br&gt;• Exact-match hoặc mask/range-like filtering.&lt;br&gt;• No match → drop tại hardware.&lt;br&gt;• Match → lưu Rx MB/FIFO và tạo RX event.&lt;/div&gt;" vertex="1">
+      <mxGeometry height="105" width="760" x="1320" y="1045" as="geometry" />
+    </mxCell>
+    <mxCell id="bus_rx_hw" edge="1" parent="1" source="can_bus" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#1864AB;strokeWidth=2;fontColor=#000000;labelBackgroundColor=#FFFFFF;" target="rx_hw" value="Broadcast CAN frame">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="rx_driver" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8F9FA;strokeColor=#D95300;strokeWidth=2;fontColor=#000000;" value="&lt;b&gt;CAN DRIVER - S32K144 FlexCAN&lt;/b&gt;&lt;br&gt;&lt;div style=&quot;text-align:left;font-size:11px;&quot;&gt;• Xử lý RX event/polling.&lt;br&gt;• Đọc Rx MB: &lt;b&gt;HRH + CAN ID + DLC + DATA&lt;/b&gt;.&lt;br&gt;• Mapping hardware object → HRH thuộc trách nhiệm driver.&lt;br&gt;• Callback lên CanIf, không decode signal.&lt;/div&gt;" vertex="1">
+      <mxGeometry height="110" width="760" x="1320" y="875" as="geometry" />
+    </mxCell>
+    <mxCell id="rx_hw_driver" edge="1" parent="1" source="rx_hw" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#D95300;strokeWidth=2;fontColor=#000000;labelBackgroundColor=#FFFFFF;" target="rx_driver" value="RX event">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="rx_canif" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8F9FA;strokeColor=#0CA678;strokeWidth=2;fontColor=#000000;" value="&lt;b&gt;CanIf - CAN INTERFACE&lt;/b&gt;&lt;br&gt;&lt;div style=&quot;text-align:left;font-size:11px;&quot;&gt;• Nhận &lt;b&gt;HRH + RxPdu(CAN ID, DLC, DATA)&lt;/b&gt; từ driver.&lt;br&gt;• Lookup &lt;b&gt;HRH + CAN ID → Rx L-PDU / RxPduId&lt;/b&gt;.&lt;br&gt;• Có thể software-filter thêm nếu hardware filter rộng.&lt;br&gt;• Mapping miss → drop + counter.&lt;/div&gt;" vertex="1">
+      <mxGeometry height="105" width="760" x="1320" y="705" as="geometry" />
+    </mxCell>
+    <mxCell id="rx_driver_canif" edge="1" parent="1" source="rx_driver" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0CA678;strokeWidth=2;fontColor=#000000;labelBackgroundColor=#FFFFFF;" target="rx_canif" value="&lt;b&gt;CanIf_RxIndication(Hrh, &amp;amp;RxPdu)&lt;/b&gt;">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="rx_pdur" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8F9FA;strokeColor=#7048E8;strokeWidth=2;fontColor=#000000;" value="&lt;b&gt;PduR - DIRECT ROUTING&lt;/b&gt;&lt;br&gt;&lt;div style=&quot;text-align:left;font-size:11px;&quot;&gt;• Part 1 chỉ route single-frame PDU.&lt;br&gt;• Mapping: &lt;b&gt;CanIf RxPduId → ComIPduId&lt;/b&gt;.&lt;br&gt;• Chuyển payload lên COM.&lt;br&gt;• Không biết CAN ID/HRH sau khi CanIf đã resolve.&lt;/div&gt;" vertex="1">
+      <mxGeometry height="110" width="760" x="1320" y="520" as="geometry" />
+    </mxCell>
+    <mxCell id="rx_canif_pdur" edge="1" parent="1" source="rx_canif" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#7048E8;strokeWidth=2;fontColor=#000000;labelBackgroundColor=#FFFFFF;" target="rx_pdur" value="&lt;b&gt;PduR_CanIfRxIndication(RxPduId, &amp;amp;PduInfo)&lt;/b&gt;">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="rx_com" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F8F9FA;strokeColor=#0088A8;strokeWidth=2;fontColor=#000000;" value="&lt;b&gt;COM MODULE&lt;/b&gt;&lt;br&gt;&lt;div style=&quot;text-align:left;font-size:11px;&quot;&gt;• Nhận I-PDU từ PduR và resolve Signal Group.&lt;br&gt;• Với mỗi Signal Slot: &lt;b&gt;UpdateBit = Slot &amp;amp; 1&lt;/b&gt;, &lt;b&gt;Payload = Slot &amp;gt;&amp;gt; 1&lt;/b&gt;.&lt;br&gt;• Cập nhật signal state và notification/getter cho upper/test stub.&lt;/div&gt;" vertex="1">
+      <mxGeometry height="125" width="760" x="1320" y="315" as="geometry" />
+    </mxCell>
+    <mxCell id="rx_pdur_com" edge="1" parent="1" source="rx_pdur" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#0088A8;strokeWidth=2;fontColor=#000000;labelBackgroundColor=#FFFFFF;" target="rx_com" value="&lt;b&gt;Com_RxIndication(ComIPduId, &amp;amp;PduInfo)&lt;/b&gt;">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="rx_upper" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#D95300;strokeWidth=2;fontColor=#000000;" value="&lt;b&gt;UPPER / TEST STUB&lt;/b&gt;&lt;br&gt;&lt;div style=&quot;text-align:left;font-size:11px;&quot;&gt;• Đọc/kiểm tra signal đã được COM unpack.&lt;br&gt;• Dùng để verify end-to-end trước khi application nghiệp vụ được chốt.&lt;/div&gt;" vertex="1">
+      <mxGeometry height="85" width="760" x="1320" y="170" as="geometry" />
+    </mxCell>
+    <mxCell id="rx_com_upper" edge="1" parent="1" source="rx_com" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#1864AB;strokeWidth=2;fontColor=#000000;labelBackgroundColor=#FFFFFF;" target="rx_upper" value="Signal notification / getter">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="global_id_note" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#FFF9DB;strokeColor=#F59F00;fontColor=#000000;fontSize=10;align=left;" value="&lt;b&gt;GLOBAL / LOCAL ID MAPPING&lt;/b&gt;&lt;br&gt;&lt;b&gt;System identity:&lt;/b&gt; GlobalPduId&lt;br&gt;&lt;b&gt;TX local:&lt;/b&gt; ComIPduId → TxPduId → CAN ID&lt;br&gt;&lt;b&gt;RX local:&lt;/b&gt; CAN ID + HRH → RxPduId → ComIPduId&lt;br&gt;&lt;b&gt;Direct CAN Binding:&lt;/b&gt; GlobalPduId ↔ CanIf L-PDU ↔ CAN ID&lt;br&gt;GlobalPduId không nằm trong CAN payload." vertex="1">
+      <mxGeometry height="130" width="560" x="820" y="1370" as="geometry" />
+    </mxCell>
+    <mxCell id="tx_accept_note" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#E6FCF5;strokeColor=#0CA678;fontColor=#000000;fontSize=10;align=left;" value="&lt;b&gt;TX REQUEST ACCEPTED POLICY&lt;/b&gt;&lt;br&gt;PduR/CanIf/Can_Write trả E_OK/CAN_OK = request đã được lower layer chấp nhận.&lt;br&gt;COM có thể clear pending + retry_count + Update Bits tại thời điểm này theo assignment policy.&lt;br&gt;Không cần chờ physical Tx confirmation để clear Update Bits." vertex="1">
+      <mxGeometry height="125" width="610" x="120" y="1370" as="geometry" />
+    </mxCell>
+    <mxCell id="tx_confirm_note" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#F3F0FF;strokeColor=#7048E8;fontColor=#000000;fontSize=10;align=left;" value="&lt;b&gt;PHYSICAL TX COMPLETION&lt;/b&gt;&lt;br&gt;FlexCAN TX complete → Can_MainFunction_Write() → CanIf_TxConfirmation(swPduHandle).&lt;br&gt;Confirmation này xác nhận CAN frame đã hoàn tất transmission; không chứng minh ECU đích đã xử lý application data." vertex="1">
+      <mxGeometry height="125" width="610" x="1470" y="1370" as="geometry" />
+    </mxCell>
+    <mxCell id="scope_note" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;fillColor=#FFE8CC;strokeColor=#D95300;fontColor=#000000;fontSize=10;align=left;" value="&lt;b&gt;PART 1 SCOPE&lt;/b&gt;&lt;br&gt;• Classical CAN, single-frame payload 0..8 byte.&lt;br&gt;• COM / PduR direct / CanIf / CAN Driver.&lt;br&gt;• CanTp, UART bulk transfer và application nghiệp vụ: ngoài phạm vi sơ đồ này.&lt;br&gt;• Có thể dùng Upper/Test Stub để test 3 ECU." vertex="1">
+      <mxGeometry height="120" width="560" x="820" y="1525" as="geometry" />
+    </mxCell>
+  </root>
+</mxGraphModel>

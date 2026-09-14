@@ -1,6 +1,6 @@
 # Codebase Map
 
-Khảo sát 2026-09-13. Core memory hành vi và ưu tiên: [context.md](context.md). Scope: source nội bộ, cấu hình build, yêu cầu và hai sơ đồ; không audit toàn bộ vendor headers hoặc chứng minh hoạt động phần cứng.
+Khảo sát 2026-09-14. Core memory hành vi và ưu tiên: [context.md](context.md). Trình tự khởi tạo CAN: [can-init-sequence.md](can-init-sequence.md). Scope: source nội bộ, cấu hình build, yêu cầu và hai sơ đồ; không audit toàn bộ vendor headers hoặc chứng minh hoạt động phần cứng.
 
 ## Snapshot
 
@@ -22,7 +22,9 @@ Khảo sát 2026-09-13. Core memory hành vi và ưu tiên: [context.md](context
 | CAN board harness | [`Can_LoopbackTest.c`](../drivers/can/test/Can_LoopbackTest.c): frame `0x123`, payload `DE AD BE EF`, bounded poll, enum kết quả + LED xanh | Đã ARM-compile; cần flash để có kết quả board thật |
 | CAN host tests | [`test_can_driver.c`](../tests/host/can/test_can_driver.c), [fake register](../tests/host/can/fakes/S32K144.h): validation/lifecycle/Tx/Rx/busy/bus-off | GCC host; pass gần nhất 2026-09-13 |
 | CAN legacy reference | `can_task/driver`, `can_task/upper`, `can_task/test`: bài cũ để đối chiếu | Không còn trong source set Debug_FLASH; không sửa để ghép với driver mới |
-| CAN upper/config skeleton | `drivers/can/comm/`, `drivers/can/config/{canif,cantp,com,pdur}` | Chưa có stack hoạt động; tầng tiếp theo dự kiến là CanIf |
+| CAN upper/config skeleton | `drivers/can/comm/`, `drivers/can/config/{canif,cantp,com,pdur}` | Chưa có stack hoạt động; ưu tiên mới là COM Part 1 với fake PduR trước |
+| COM Part 1 plan | [com-part1-plan.md](implement/com-part1-plan.md): phân tích assignment/notes, 17 file code/test dự kiến, 7 giai đoạn và test matrix | PLAN; chưa thay đổi COM implementation. [Assignment](../requirements/assignment_part1_com_signal.md) là nguồn yêu cầu chính |
+| Bộ plan Part 1 | [implement/README.md](implement/README.md): COM, PduR, CanIf, CAN Driver, BSP/scheduler, integration | File inventory/ownership và contracts giữa các plan; chưa có source mới từ các plan |
 | UART | [`Driver_UART.c`](../drivers/uart/Driver_UART.c), [header](../drivers/uart/Driver_UART.h): LPUART1 baud/8N1, IRQ byte callbacks, stats, blocking debug TX | NVIC/S32K144; chưa có gateway consumer hoạt động trong main |
 | Byte queue | [`ring_buffer.c`](../middlewares/ring_buffer.c), [header](../middlewares/ring_buffer.h): static byte FIFO, Push/Pop/full/empty | Standard integer/bool types; dự kiến UART gateway, không phải CAN frame queue |
 | Timebase/IRQ | `drivers/systick/`, `drivers/lpit/`, `drivers/nvic/`: ticks, timer callbacks, interrupt enable/priority | S32K144/system clock; phục vụ driver và timeout tương lai |
@@ -59,7 +61,10 @@ CanIf chọn PduR hoặc CanTp theo upper owner; N-PDU không quay lại PduR di
 ## Change guide
 
 - Thay CAN timing/filter/MB: đọc `drivers/can/config/can/Can_Cfg.*` và `drivers/can/driver/Can.c`; profile hiện chỉ nhận 8 MHz/500 kbit/s. Xác minh board clock/pins trước test vật lý.
+- Thay thứ tự khởi tạo/lifecycle CAN: cập nhật đồng thời `docs/can-init-sequence.md`, driver/config và loopback harness để tài liệu không lệch code.
 - Thêm CanIf: đặt implementation dưới `drivers/can/comm/canif`, config dưới `drivers/can/config/canif`, rồi đăng ký ba callback với CAN Driver.
+- Viết COM: theo `docs/implement/com-part1-plan.md`; giữ code trong `drivers/can/comm/com` và config trong `drivers/can/config/com`. Host tests ở `tests/host/com` với fake PduR. Plan thay header Tx tick có nowMs bằng invocation 1 ms, bỏ triggered/Rx deadline khỏi Part 1; source hiện vẫn là skeleton cũ.
+- Các tầng còn lại: theo mục lục `docs/implement/README.md`; dùng chung `comm_types.h`/`pdur_com.h` và module config, không duplicate definitions theo mỗi plan. Integration plan có validator system matrix và trace 19 deliverables của assignment.
 - Thêm route: freeze schema CanIf/PduR và reverse confirmation; skeleton config hiện ở `drivers/can/config`, chưa có implementation route hoạt động.
 - Thay UART binary I/O: giữ driver byte callbacks, xây gateway parser/queue riêng; chú ý loss/error và TX kick. Không tìm CLI Task 5 vì không có `tasks/` trong bản này.
 - Thêm timeout: inject clock ở module logic; xác định tick→ms và rollover. Không đưa state machine vào SysTick ISR.

@@ -1,6 +1,6 @@
 # Project Context
 
-Cập nhật: 2026-09-13. Đọc cùng [codebase-map.md](codebase-map.md) trước mỗi task.
+Cập nhật: 2026-09-14. Đọc cùng [codebase-map.md](codebase-map.md) trước mỗi task.
 
 ## Quy tắc tương tác của người dùng
 
@@ -18,10 +18,18 @@ Cập nhật: 2026-09-13. Đọc cùng [codebase-map.md](codebase-map.md) trư�
 - [Mock_MCU-Overview.png](../requirements/Mock_MCU-Overview.png) là mô hình hệ thống **khi hoàn thiện**, không mô tả mức implementation hiện tại.
 - [Mock_MCU-Tx-Rx Flow.png](<../requirements/Mock_MCU-Tx-Rx Flow.png>) là luồng gửi/nhận **tạm thời** người dùng và cộng tác viên đang theo; được phép refine dựa trên yêu cầu/bằng chứng.
 - **Ba ECU là sản phẩm của ba người khác nhau. Code và cách tổ chức chắc chắn có thể khác nhau.** Không yêu cầu đồng nhất source/API C/PDU ID/HTH/HRH/MB giữa firmware; thống nhất wire protocol, message matrix và test vector để tích hợp.
-- Đề bài nghiệp vụ chưa rõ; ưu tiên **BSP/timebase → CAN Driver → CanIf → PduR direct và test single-frame**, sau đó mới COM/transport/app theo yêu cầu đủ rõ. Test stub có thể đóng vai upper consumer.
+- Ưu tiên mới: người dùng đã cung cấp assignment Part 1 và muốn triển khai COM theo từng giai đoạn. COM có thể được viết/test độc lập với fake PduR trước khi PduR/CanIf thật hoàn tất. App/bulk transfer vẫn nằm ngoài Part 1.
 - Người dùng đã yêu cầu khảo sát project, tạo core memory và góp ý/chỉnh `requirements/API_SPEC.md`. Lượt khảo sát này chỉ cập nhật tài liệu, không refactor source hay bật harness.
 
 ## Yêu cầu có trong tài liệu, chưa đồng nghĩa đã triển khai
+
+- Hai tài liệu mới từ người giao bài: [assignment_part1_com_signal.md](../requirements/assignment_part1_com_signal.md) là yêu cầu chính Part 1; [part1_architecture_notes.md](../requirements/part1_architecture_notes.md) giải thích thiết kế. Khi khác API_SPEC/skeleton cũ, plan COM theo assignment và ghi rõ migration cần làm.
+- Part 1: Signal → một Group → một I-PDU; slot byte-aligned có U ở bit0; Tx periodic với base tick 1 ms, static config order, latest value wins, bounded retry tối đa 1 + max_retries, drop occurrence giữ U/data và không dịch lịch. Clear U ngay khi lower accepted, không đợi TxConfirmation.
+- GlobalPduId là identity chung của logical message trong hệ thống; local handles giữa ECU vẫn có thể khác. Direct Binding ánh xạ GlobalPduId ↔ CanIf L-PDU ↔ CAN ID, không thêm GlobalPduId vào CAN payload. Một message xuất hiện trong config sender/receiver vẫn dùng cùng global identity.
+- Kế hoạch [COM Part 1](implement/com-part1-plan.md) mới ở trạng thái PLAN: 17 file code/test dự kiến (6 sửa, 11 mới), 7 giai đoạn. Lượt này chỉ tạo plan và cập nhật core memory, chưa sửa COM C/header/config.
+- Theo yêu cầu bổ sung, đã tạo [bộ plan Part 1](implement/README.md) gồm COM, PduR, CanIf, hoàn thiện CAN Driver, BSP/timebase/scheduler và integration/system matrix. Mỗi plan có inventory file, contracts, giai đoạn code, tests và exit criteria; đây chưa phải implementation hoặc validation report. Không cộng số file từng plan vì có shared headers/config.
+- Bộ plan không triển khai CanTp/Transfer/UART gateway/app vì ngoài Part 1. Wire profile chưa chốt giữa ba ECU; multi-controller và training Rx adapter là gap tầng dưới được lập plan riêng. Scheduler overrun policy trong plan là lựa chọn local, chưa có source scheduler.
+- Little-endian, unsigned value types và Rx U=0 giữ giá trị cũ là lựa chọn local đề xuất trong plan, chưa được assignment chốt; cần thống nhất wire profile trước ghép ECU. CanTp/deadline monitoring/triggered Tx ngoài Part 1.
 
 - Ba board S32K144 trên shared Classic CAN bus; PC1–UART–ECU1, PC2–UART–ECU3.
 - README yêu cầu text/image hai chiều PC1 ↔ PC2, dữ liệu giống từng byte.
@@ -38,6 +46,7 @@ Cập nhật: 2026-09-13. Đọc cùng [codebase-map.md](codebase-map.md) trư�
 | CAN Driver đang dùng | CAN0 polling, Classic CAN standard 11-bit, 0..8 byte, 8 MHz/500 kbit/s; lifecycle UNINIT/STOPPED/STARTED/FAULT; bounded hardware wait, software PDU handle, Tx/Rx/bus-off callbacks và counters | `drivers/can/driver/`, `drivers/can/config/can/` |
 | CAN config | MB0 HTH Tx, MB1 HRH Rx exact `0x123`; export normal và internal-loopback config; config timing khác 500 kbit/s bị từ chối | `drivers/can/config/can/Can_Cfg.c` |
 | CAN layout | Mọi phần CAN ngoài BSP nằm dưới `drivers/can`: `driver`, `config`, `comm`, `test`; board clock/pin/transceiver giữ ở `bsp/can` | cây thư mục `drivers/can/`, `bsp/can/` |
+| CAN init guide | Thứ tự BSP → driver STOPPED → callback/upper init → STARTED → polling, gồm register/state/failure path hiện tại | `docs/can-init-sequence.md` |
 | CAN legacy coupling | Bản tham khảo vẫn callback trực tiếp CanUpper, nhưng đã bị loại khỏi source set Debug_FLASH để không trùng symbol với driver mới | `can_task/`, `.cproject` |
 | Upper layers | Skeleton COM/config đã được gom vào `drivers/can`; CanIf/PduR/CanTp chưa có implementation hoạt động | `drivers/can/comm/`, `drivers/can/config/` |
 | UART | LPUART1 byte callbacks, baud selection, bounded wait, stats; RX/TX IRQ, chưa có file framing/session | `drivers/uart/Driver_UART.c` |
@@ -47,7 +56,7 @@ Cập nhật: 2026-09-13. Đọc cùng [codebase-map.md](codebase-map.md) trư�
 
 ## Quyết định tài liệu trong API_SPEC 0.2
 
-- Giữ **DRAFT**, tách EXISTING/MODIFY/NEW khỏi trạng thái được kiểm chứng. App/COM/CanTp/Transfer/UART framing đánh DEFERRED khi chưa đủ contract.
+- API_SPEC 0.2 giữ **DRAFT**, tách EXISTING/MODIFY/NEW khỏi trạng thái được kiểm chứng. Mô tả COM cũ cần đồng bộ theo assignment Part 1 khi thực thi giai đoạn 1; không dùng triggered Tx/deadline monitoring cũ làm yêu cầu Part 1.
 - Đề xuất CAN polling, callback upper ở main; CanIf không có TX queue, một outstanding request/HTH và TxPduId, BUSY không nhận request.
 - Driver lưu software PDU handle theo MB, copy payload trước return, terminal callback đúng một lần/request accepted; có policy stop/bus-off/timeout và stale events.
 - Mode transition đồng bộ có poll bound, init kết thúc STOPPED và start riêng đã có trong driver mới. Deadline theo monotonic time/Tx timeout trong API_SPEC vẫn chưa triển khai.
@@ -66,10 +75,12 @@ Cập nhật: 2026-09-13. Đọc cùng [codebase-map.md](codebase-map.md) trư�
 
 ## Validation gần nhất
 
+- Lượt lập bộ plan Part 1: đã kiểm tra local links, code fences và encoding trên 9 file Markdown (7 file trong implement và 2 core memory); số dòng inventory của 6 plan khớp số file công bố. Chỉ thay đổi tài liệu, không chạy lại firmware/host tests; các bằng chứng CAN bên dưới thuộc lượt implementation trước.
+
 - Host compile/test bằng GCC với `-Wall -Wextra -Werror`: `CAN host tests passed`.
 - `Can.c`, helper, config, board loopback harness, `board_can.c` và `src/main.c` compile sạch bằng NXP ARM GCC 6.3/Cortex-M4 với `-Wall -Wextra -Werror`.
 - Chưa chạy S32DS full link hoặc flash board. `g_CanLoopbackTestResult == CAN_LOOPBACK_TEST_PASSED` và LED xanh sau khi flash mới là bằng chứng loopback phần cứng nội bộ.
 
 ## Bước tiếp theo được khuyến nghị
 
-Flash `Debug_FLASH`, ghi raw result của internal loopback, rồi mới viết CanIf dùng callback registration của CAN Driver. Đồng thời thống nhất message matrix với hai người còn lại trước physical integration.
+Thực hiện giai đoạn 1 trong [plan COM](implement/com-part1-plan.md), sau đó codec → init/Send → scheduler/retry → Rx → host validation. Board integration chờ PduR/CanIf thật, mapping hệ thống và scheduler 1 ms. Driver CAN0-only và khác training Rx API là gap tầng dưới cần xử lý riêng nếu hoàn tất toàn bộ bài Part 1.

@@ -5,6 +5,7 @@
 #include <stdbool.h>
 
 typedef uint16_t PduIdType;
+typedef uint16_t GlobalPduIdType;
 
 typedef enum
 {
@@ -22,4 +23,4 @@ typedef struct
     uint16_t length;
 } PduInfoType;
 
-#endif /* COM_TYPES_H_ */
+#endif /* COMM_TYPES_H_ */
