@@ -8,7 +8,7 @@ CanDrv validation (2026-09-15): Can.c đã validate toàn bộ controller/HOH tr
 
 Project C bare-metal S32 Design Studio/Eclipse cho S32K144. Mục tiêu là mock ba ECU giao tiếp CAN với hai đầu UART nối PC. Người dùng đã xóa stack CAN mới và docs/implement để triển khai lại.
 
-can_driver và CanIf đã triển khai bốn API mỗi module với comments tiếng Anh. CanStack_Types.h có common PDU types và Std_ReturnType/E_OK/E_NOT_OK. can_task và BSP CAN vẫn còn. Entrypoint chứa tham chiếu đến loopback harness đã xóa; PduR production callbacks chưa tồn tại, nên chưa có firmware CAN hoạt động được xác nhận.
+can_driver và CanIf đã triển khai bốn API mỗi module với comments tiếng Anh. CanStack_Types.h có common PDU types và Std_ReturnType/E_OK/E_NOT_OK. Entrypoint hiện chứa board loopback harness và hai PduR capture callbacks; PduR production chưa triển khai. Firmware FLASH harness đã compile/link từ source hiện tại, nhưng chưa chạy trên board.
 
 ## Cây thư mục còn lại
 
@@ -27,7 +27,7 @@ drivers/
   can/canif/                 CanIf.c/h, CanIf_Types.h, CanIf_Cfg.c/h
   adc/, common/, gpio/, lpit/, nvic/, rtc/, systick/, uart/
 middlewares/                 ring_buffer.c/h
-src/                         main.c — vẫn gọi harness CAN đã xóa
+src/                         main.c — board loopback CanDrv+CanIf và PduR capture callbacks
 requirements/                assignment, architecture notes, README, overview
   assumptions/               API_SPEC, flow.xml, Tx-Rx Flow PNG
 docs/                        context.md, codebase-map.md, can-init-sequence.md
@@ -42,14 +42,14 @@ docs/implement không tồn tại. Tests CAN0 mới nằm tại tests/can_driver
 
 | Module | File/ranh giới còn tồn tại | Phụ thuộc và trạng thái |
 |---|---|---|
-| Entrypoint | [src/main.c](../src/main.c) | Include Can_LoopbackTest.h và gọi Can_LoopbackTest_Run từ harness đã xóa; chưa được chỉnh sau reset. |
+| Entrypoint | [src/main.c](../src/main.c) | Board harness: BSP/Can_Init/Freeze LPB+clear SRXDIS/CanIf_Init; Can_Write và CanIf_Transmit DLC 0..8 (18 case), BUSY/copy/exactly-once callbacks. PduR captures và volatile g_CanLoopbackTestResult nằm trong main; green LED báo PASS. |
 | Startup/linker | Project_Settings/Startup_Code, Project_Settings/Linker_Files | Reset/vector/memory layout và vendor headers trong include; chưa audit toàn bộ ở lượt này. |
 | CAN common mới | [CanStack_Types.h](../drivers/can/common/CanStack_Types.h), [CanStack_Cfg.h](../drivers/can/common/CanStack_Cfg.h), [CanStack_Cfg.c](../drivers/can/common/CanStack_Cfg.c) | Common PDU types đã có; header config định nghĩa ba GlobalPduId vehicle/engine/climate 0x0010..0x0012. CanStack_Cfg.c còn rỗng; chưa có binding qua các tầng. |
 | CAN driver mới | [Can.c](../drivers/can/can_driver/Can.c), [Can.h](../drivers/can/can_driver/Can.h), [Can_Types.h](../drivers/can/can_driver/Can_Types.h), [Can_cfg.c](../drivers/can/can_driver/Can_cfg.c), [Can_Cfg.h](../drivers/can/can_driver/Can_Cfg.h) | Bốn API, hardware CAN0/8 MHz oscillator/500 kbit/s, standard Classical data, Tx MB8/Rx MB9. Validate toàn bộ config và resolve HOH→object→controller theo ID. Production HTH0/HRH1; logical IDs có thể sparse. Snapshot Tx, saved swPduHandle, bounded waits và debugger logs; callbacks nối sang CanIf. |
 | CanIf Part 1 | [CanIf.c](../drivers/can/canif/CanIf.c), [CanIf.h](../drivers/can/canif/CanIf.h), [types](../drivers/can/canif/CanIf_Types.h), [config](../drivers/can/canif/CanIf_Cfg.c) | Init validate static tables/HOH refs; Tx local ID → CAN ID+HTH; Rx HRH+CAN ID → local Rx ID; callbacks tới PduR extern. Không queue/retry hoặc sửa payload/U. Config VehicleStatus Tx/Rx ID 0, CAN ID 0x321, HTH0/HRH1; có debugger logs. |
 | CanIf tests | [README](../tests/canif/README.md), [runner](../tests/canif/run_tests.ps1) | 7 nhóm fixtures unit tests và production-config smoke test đạt; ARM production object compile và relocatable CanDrv+CanIf link đạt. Chỉ còn PduR callbacks undefined; không chứng minh board runtime. |
 | CAN0 host tests | [test_can_driver.c](../tests/can_driver/test_can_driver.c), [run_tests.ps1](../tests/can_driver/run_tests.ps1), [README](../tests/can_driver/README.md) | Real vendor types/masks + fake MMIO W1C/handshakes và capture callbacks; 11 nhóm fixtures (14 malformed configs/sparse IDs/9 regressions) và 9 regressions với config production đạt. Runner compile production driver ARM Cortex-M4; relocatable CanDrv+CanIf link đạt, còn PduR callbacks. Chưa full firmware/board test. |
-| CAN BSP | [board_can.c](../bsp/can/board_can.c), [board_can.h](../bsp/can/board_can.h) | disable_WDOG, init_MCU; sử dụng S32K144.h và LED BSP. Chưa được main hiện tại gọi trực tiếp. |
+| CAN BSP | [board_can.c](../bsp/can/board_can.c), [board_can.h](../bsp/can/board_can.h) | Main gọi disable_WDOG/init_MCU trước driver init; sử dụng S32K144.h và LED BSP. BSP waits cũ unbounded. |
 | CAN reference driver | [Can.c](../can_task/driver/src/Can.c), [Can.h](../can_task/driver/inc/Can.h), [Can_Cfg.c](../can_task/driver/src/Can_Cfg.c) | FlexCAN0; config normal/loopback, MB0 Tx và MB1 Rx exact 0x123. Driver include/callback trực tiếp CanUpper; không phải driver mới. |
 | Reference upper/test | [CanUpper.c](../can_task/upper/src/CanUpper.c), [test/main.c](../can_task/test/main.c) | CanUpper gọi driver, giữ PDU data/status; harness #if 0. Chưa nối với firmware main. |
 | App | app/node_app.c/h, app/gateway_app.c/h | File rỗng, chưa có application logic hoặc gateway. |
@@ -68,9 +68,11 @@ Entrypoint còn trên đĩa:
 
 ~~~text
 src/main.c
-  -> include Can_LoopbackTest.h      [file đã xóa]
-  -> Can_LoopbackTest_Run()          [implementation đã xóa]
-  -> vòng lặp vô hạn
+  -> BSP watchdog/oscillator/pins/LED
+  -> Can_Init -> Freeze LPB=1, SRXDIS=0 -> CanIf_Init
+  -> Can_Write / CanIf_Transmit, DLC 0..8
+  -> real CanDrv/CanIf -> PduR capture callbacks trong main.c
+  -> PASS/FAIL debugger result -> vòng lặp vô hạn
 ~~~
 
 Reference can_task độc lập:
@@ -100,7 +102,7 @@ COM sở hữu packing/timing; PduR sở hữu routing; CanIf sở hữu CAN ID 
 - Release_FLASH, Debug_RAM, Release_RAM: Project_Settings với cùng exclusions, include, src. Chưa đồng nhất source set với Debug_FLASH.
 - can_task và app không nằm trong source entries của cả bốn cấu hình.
 - Entrypoint firmware là src/main.c. can_task/test/main.c không phải main đang build và hiện bị disabled bằng #if 0.
-- Thiếu header loopback mà src/main.c include là trở ngại source rõ ràng sau reset. Chưa chạy full build để liệt kê thêm lỗi.
+- Main không còn tham chiếu header loopback đã xóa. Generated Debug_FLASH makefiles vẫn trỏ tới các CAN folders cũ; regenerate trong IDE khi build Debug_FLASH.
 - Khi được yêu cầu tích hợp/build: sửa entrypoint/source entries trong project metadata và regenerate bằng S32DS. Không dùng generated makefiles/ELF cũ làm nguồn sự thật.
 
 ## Điểm sửa cho công việc tiếp theo
@@ -125,3 +127,7 @@ COM sở hữu packing/timing; PduR sở hữu routing; CanIf sở hữu CAN ID 
 - Khi có implementation mới, thiết lập tests tương ứng với contract/config mới. Host fake registers không thay bằng chứng trên board; loopback không thay test ba ECU.
 - Chưa có firmware cộng tác viên hoặc message matrix chính thức; chưa xác nhận CAN ID/bitrate/DLC/endian/scale/timing tương thích liên ECU.
 - [can-init-sequence.md](can-init-sequence.md) và API_SPEC chưa được cập nhật trong lượt này; xem như guide/draft cần review, không phải mô tả implementation hiện tại.
+
+## Board loopback harness hiện tại
+
+Chỉ thêm logic vào src/main.c; không tạo source/header/test file mới. Host simulation C stdin dùng modules thật/MMIO transformer pass 18 case và các nhánh lỗi; ARM Cortex-M4 FLASH compile/link từ source/startup/BSP/GPIO/NVIC thật pass. ELF: build/canif/CanIf_loopback.elf; logs main_loopback_host_debug.log và main_loopback_build.log. Debugger: status=2, passedCases=18, txConfirmations=18, rxIndications=18 nghĩa là PASS; FAIL=3 giữ stage/error/dlc/register snapshot. Reset MCU để chạy lại. Chưa flash/test board; internal loopback không kiểm tra dây CAN/transceiver. NXP RM CTRL1[LPB] yêu cầu Freeze khi ghi LPB và SRXDIS=0 để self receive.

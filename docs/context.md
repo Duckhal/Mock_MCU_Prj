@@ -36,10 +36,12 @@ Cập nhật: 2026-09-15, sau khi triển khai driver CAN0 và CanIf Part 1. Đ�
 
 ## Entrypoint và build cần lưu ý
 
-- [src/main.c](../src/main.c) vẫn include ../drivers/can/test/Can_LoopbackTest.h và gọi Can_LoopbackTest_Run(), trong khi header/source đã bị xóa. Đây là tham chiếu treo cần xử lý khi bắt đầu tích hợp firmware lại; chưa sửa trong lượt cập nhật tài liệu.
+- Review khả năng nạp (2026-09-15): CanIf_loopback.elf được readelf xác nhận ARM ELF32 executable, có vector table tại Flash 0x0, flash_config tại 0x400 và Reset_Handler entry 0x529; nm không còn undefined symbols. Có thể chọn ELF này trong debug configuration cho S32K144 để nạp, nhưng chưa xác nhận flash/board runtime. can_task/test/main.c vẫn #if 0 và ngoài source entries, không phải harness trong ELF này.
+
+- [src/main.c](../src/main.c) hiện chứa toàn bộ board harness CanDrv+CanIf loopback. BSP → Can_Init → Freeze bật LPB/clear SRXDIS → CanIf_Init → 18 case (Can_Write/CanIf_Transmit, DLC 0..8). Hai PduR capture callbacks nằm trong main.c; không link cùng production PduR callbacks sau này.
 - [.cproject](../.cproject): Debug_FLASH lấy source từ Project_Settings, bsp, drivers, include, middlewares và src. Ba cấu hình Release_FLASH/Debug_RAM/Release_RAM chỉ lấy Project_Settings, include và src.
 - can_task không nằm trong source entries của cả bốn cấu hình. Harness can_task/test/main.c còn bị bọc trong #if 0.
-- Generated Debug_FLASH có thể chứa output cũ. Không suy build/link/flash thành công từ artifact còn trên đĩa. Chưa chạy full build hoặc board test sau reset.
+- Generated Debug_FLASH vẫn có source lists cũ trỏ tới các CAN folders đã xóa; IDE cần regenerate khi build Debug_FLASH. Firmware harness đã compile/link FLASH riêng từ source thật cùng startup, BSP, GPIO/NVIC và CanDrv/CanIf/config: build/canif/CanIf_loopback.elf. Chưa flash hoặc chạy board.
 
 ## Yêu cầu giữ lại để triển khai mới
 
@@ -63,6 +65,8 @@ Nguồn chính là [assignment_part1_com_signal.md](../requirements/assignment_p
 
 ## Chưa được kiểm chứng / bước sau
 
+- Board harness main.c (2026-09-15): g_CanLoopbackTestResult status PASS=2/FAIL=3, stage/error/dlc, counters, expected/received bytes và snapshot MCR/CTRL1/ESR1/IFLAG1; green LED bật khi 18 case pass. Kiểm tra BUSY trước polling, sửa caller buffer sau acceptance và polling thêm để phát hiện callback lặp. Freeze/poll waits bounded theo iterations; BSP watchdog/SOSC waits cũ vẫn unbounded, stage BSP giúp debug. Host simulation qua C stdin, không tạo test source file, dùng driver/CanIf thật và fake MMIO đã pass 18 case cùng timeout, corruption, driver/Freeze failures, callback validation. FLASH firmware strict ARM compile/link pass; logs build/canif/main_loopback_host_debug.log và main_loopback_build.log. Chưa board runtime. Chỉ sửa main.c và core memory hiện có, không tạo source/header/test file mới.
+
 - CanDrv validation đã bổ sung (2026-09-15) sau review: Can_ValidateConfig kiểm tra toàn bộ controller/HOH, unique controller IDs và HOH IDs xuyên Tx/Rx, mỗi HOH resolve đúng một controller, object type và unique controller/physical MB pair. Từ chối profile khác 1 instance-0 controller/500000 baud/2 HOH Tx MB8 và Rx MB9. Can_GetController/Can_GetHardwareObject dùng ID lookup, không giả định index; Can_Write resolve Tx HOH, Rx dùng object đã resolve để trả configured HRH. Không thay đổi config production hoặc register stages. CAN_LOG_CONFIG_ERROR.detail chứa reason ở 16 bit cao và table index ở 16 bit thấp. Tests fixture/production và ARM pass; CanDrv+CanIf relocatable link chỉ còn hai PduR callbacks undefined. Baseline runner lỗi CAN_HTH_CAN1_TX trước thay đổi được lưu trong build/can_driver/config_validation_baseline_compile.log. Chưa full firmware/board test.
 
 - CanIf Part 1 đã triển khai đúng bốn APIs trong CanIf.h. Init validate CAN ID/unique Tx ID+CAN ID, unique Rx ID+HRH/CAN ID key và HOH đúng loại với controller tồn tại. Transmit dùng local ID lookup, giữ swPduHandle, gọi driver một lần và chỉ CAN_OK trở thành E_OK; không queue/retry/clear U. Callback Tx chuyển local ID; exactly-once thuộc driver. Rx chuyển bytes đồng bộ tới PduR và không giữ pointer. Structured diagnostics: CanIf_LogRecords/CanIf_LogSequence, chạy tuần tự main context. Source và helpers đều có comments tiếng Anh.
@@ -73,9 +77,9 @@ Nguồn chính là [assignment_part1_com_signal.md](../requirements/assignment_p
 
 - Implementation CAN0 mới thay thế các đề xuất chưa triển khai trong [can-driver-design.md](can-driver-design.md) đối với profile tạm. Can_Init đã thống nhất return type Can_ReturnType. Driver copy payload trước CAN_OK, giữ swPduHandle, release trước TxConfirmation và chuyển Rx theo HRH + CAN ID. Init có bounded waits; bus-off/fatal fault latch ERROR và request Freeze; gọi Init lại sau khi sửa nguyên nhân sẽ reset CAN0 và bỏ request lỗi không success-confirm. Rx acknowledge IFLAG trước TIMER unlock, không ép RX_EMPTY sau khi service. Structured logs nằm trong Can_LogRecords/Can_LogSequence để xem bằng debugger.
 
-- CanIf đã cung cấp hai callbacks production cho CanDrv. PduR tiếp theo phải cung cấp PduR_CanIfTxConfirmation(PduIdType TxPduId) và PduR_CanIfRxIndication(PduIdType RxPduId, const PduInfoType *PduInfoPtr); hiện mới khai báo extern trong CanIf.c và capture implementations trong tests. BSP và Can_Init cần chạy trước CanIf_Init; driver dùng normal mode, không loopback. Không chạy các API đồng thời hoặc xử lý cùng MB bằng IRQ.
+- CanIf cung cấp hai callbacks production cho CanDrv. Production PduR vẫn chưa triển khai; main.c hiện cung cấp hai PduR capture callbacks cho board harness. BSP và Can_Init chạy trước CanIf_Init; driver init normal mode, sau đó harness bật loopback qua Freeze. Không chạy API đồng thời hoặc xử lý cùng MB bằng IRQ.
 
-- Đã chạy tests/can_driver/run_tests.ps1: 9 nhóm host tests và production ARM compile đạt; baseline compiler error trước khi sửa được lưu tại build/can_driver/baseline.log. Chưa full firmware build/link, flash, loopback hoặc CAN vật lý; main vẫn include harness đã xóa. Host tests không chứng minh bitrate/clock/pins/transceiver trên board hoặc toàn stack compliance.
+- Lịch sử driver: 9 nhóm host tests và ARM compile từng đạt, baseline compiler error ở build/can_driver/baseline.log; lượt validation sau đạt 11 nhóm và production regression. Harness FLASH hiện đã compile/link riêng; chưa flash hoặc chạy CAN vật lý. Host tests không chứng minh bitrate/clock/pins/transceiver trên board hoặc toàn stack compliance.
 - Chưa có firmware của hai cộng tác viên, message matrix chính thức hoặc test vector liên ECU trong workspace để xác nhận tương thích.
 - Khi người dùng yêu cầu triển khai tiếp: đối chiếu assignment, xác định types/config/API mới, tham khảo can_task và BSP còn lại. Mọi phần CAN mới ngoài BSP vẫn đặt dưới drivers/can theo yêu cầu tổ chức project.
 - Xử lý entrypoint và source entries khi tích hợp lại; không coi guide, config hoặc kết quả test của source đã xóa là trạng thái hiện hành.
