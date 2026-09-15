@@ -1,12 +1,14 @@
 # Codebase Map
 
-Snapshot: 2026-09-15, sau triển khai driver CAN0 mới. Quy tắc tương tác và mục tiêu: [context.md](context.md). Map này phản ánh source và kiểm chứng host/ARM object; không chứng minh firmware chạy được trên board.
+Snapshot: 2026-09-15, sau triển khai driver CAN0 và CanIf. Quy tắc tương tác và mục tiêu: [context.md](context.md). Map này phản ánh source và kiểm chứng host/ARM object; không chứng minh firmware chạy được trên board.
 
 ## Tổng quan
 
+CanDrv validation (2026-09-15): Can.c đã validate toàn bộ controller/HOH trước register access: shared unique Tx/Rx IDs, đúng một controller reference, valid object types và unique physical resources. Lookup theo ID độc lập index; Rx trả configured HRH. Hardware vẫn CAN0/500 kbit/s/Tx MB8/Rx MB9; profile khác bị từ chối. Config production HOH0/1 → controller0 được giữ nguyên.
+
 Project C bare-metal S32 Design Studio/Eclipse cho S32K144. Mục tiêu là mock ba ECU giao tiếp CAN với hai đầu UART nối PC. Người dùng đã xóa stack CAN mới và docs/implement để triển khai lại.
 
-can_driver mới đã triển khai bốn API với profile CAN0 cố định và comments tiếng Anh. CanStack_Types.h đã có common PDU types. can_task và BSP CAN vẫn còn. Entrypoint hiện chứa tham chiếu đến loopback harness đã xóa; CanIf production callbacks chưa tồn tại, nên chưa có firmware CAN hoạt động được xác nhận.
+can_driver và CanIf đã triển khai bốn API mỗi module với comments tiếng Anh. CanStack_Types.h có common PDU types và Std_ReturnType/E_OK/E_NOT_OK. can_task và BSP CAN vẫn còn. Entrypoint chứa tham chiếu đến loopback harness đã xóa; PduR production callbacks chưa tồn tại, nên chưa có firmware CAN hoạt động được xác nhận.
 
 ## Cây thư mục còn lại
 
@@ -22,6 +24,7 @@ can_task/                    bài CAN tham khảo riêng
 drivers/
   can/common/                CanStack_Types.h, CanStack_Cfg.h/c
   can/can_driver/            Can.c/h, Can_Types.h, Can_cfg.c, Can_Cfg.h
+  can/canif/                 CanIf.c/h, CanIf_Types.h, CanIf_Cfg.c/h
   adc/, common/, gpio/, lpit/, nvic/, rtc/, systick/, uart/
 middlewares/                 ring_buffer.c/h
 src/                         main.c — vẫn gọi harness CAN đã xóa
@@ -42,8 +45,10 @@ docs/implement không tồn tại. Tests CAN0 mới nằm tại tests/can_driver
 | Entrypoint | [src/main.c](../src/main.c) | Include Can_LoopbackTest.h và gọi Can_LoopbackTest_Run từ harness đã xóa; chưa được chỉnh sau reset. |
 | Startup/linker | Project_Settings/Startup_Code, Project_Settings/Linker_Files | Reset/vector/memory layout và vendor headers trong include; chưa audit toàn bộ ở lượt này. |
 | CAN common mới | [CanStack_Types.h](../drivers/can/common/CanStack_Types.h), [CanStack_Cfg.h](../drivers/can/common/CanStack_Cfg.h), [CanStack_Cfg.c](../drivers/can/common/CanStack_Cfg.c) | Common PDU types đã có; header config định nghĩa ba GlobalPduId vehicle/engine/climate 0x0010..0x0012. CanStack_Cfg.c còn rỗng; chưa có binding qua các tầng. |
-| CAN driver mới | [Can.c](../drivers/can/can_driver/Can.c), [Can.h](../drivers/can/can_driver/Can.h), [Can_Types.h](../drivers/can/can_driver/Can_Types.h), [Can_cfg.c](../drivers/can/can_driver/Can_cfg.c), [Can_Cfg.h](../drivers/can/can_driver/Can_Cfg.h) | Init/Write/Write polling/Read polling hardcode CAN0, 8 MHz oscillator/500 kbit/s, standard Classical data, Tx MB8/HTH0/Rx MB9/HRH1. Snapshot Tx, saved swPduHandle, bounded waits và debugger logs; CanIf callbacks được khai báo extern. Hai-controller config tables còn tồn tại nhưng driver tạm không dùng; chưa hỗ trợ CAN1. |
-| CAN0 host tests | [test_can_driver.c](../tests/can_driver/test_can_driver.c), [run_tests.ps1](../tests/can_driver/run_tests.ps1), [README](../tests/can_driver/README.md) | Real vendor types/masks + fake MMIO W1C/handshakes và capture callbacks; 9 nhóm tests đạt. Runner compile production driver thành ARM Cortex-M4 object; chưa firmware link/board test. tests không nằm trong source entries firmware. |
+| CAN driver mới | [Can.c](../drivers/can/can_driver/Can.c), [Can.h](../drivers/can/can_driver/Can.h), [Can_Types.h](../drivers/can/can_driver/Can_Types.h), [Can_cfg.c](../drivers/can/can_driver/Can_cfg.c), [Can_Cfg.h](../drivers/can/can_driver/Can_Cfg.h) | Bốn API, hardware CAN0/8 MHz oscillator/500 kbit/s, standard Classical data, Tx MB8/Rx MB9. Validate toàn bộ config và resolve HOH→object→controller theo ID. Production HTH0/HRH1; logical IDs có thể sparse. Snapshot Tx, saved swPduHandle, bounded waits và debugger logs; callbacks nối sang CanIf. |
+| CanIf Part 1 | [CanIf.c](../drivers/can/canif/CanIf.c), [CanIf.h](../drivers/can/canif/CanIf.h), [types](../drivers/can/canif/CanIf_Types.h), [config](../drivers/can/canif/CanIf_Cfg.c) | Init validate static tables/HOH refs; Tx local ID → CAN ID+HTH; Rx HRH+CAN ID → local Rx ID; callbacks tới PduR extern. Không queue/retry hoặc sửa payload/U. Config VehicleStatus Tx/Rx ID 0, CAN ID 0x321, HTH0/HRH1; có debugger logs. |
+| CanIf tests | [README](../tests/canif/README.md), [runner](../tests/canif/run_tests.ps1) | 7 nhóm fixtures unit tests và production-config smoke test đạt; ARM production object compile và relocatable CanDrv+CanIf link đạt. Chỉ còn PduR callbacks undefined; không chứng minh board runtime. |
+| CAN0 host tests | [test_can_driver.c](../tests/can_driver/test_can_driver.c), [run_tests.ps1](../tests/can_driver/run_tests.ps1), [README](../tests/can_driver/README.md) | Real vendor types/masks + fake MMIO W1C/handshakes và capture callbacks; 11 nhóm fixtures (14 malformed configs/sparse IDs/9 regressions) và 9 regressions với config production đạt. Runner compile production driver ARM Cortex-M4; relocatable CanDrv+CanIf link đạt, còn PduR callbacks. Chưa full firmware/board test. |
 | CAN BSP | [board_can.c](../bsp/can/board_can.c), [board_can.h](../bsp/can/board_can.h) | disable_WDOG, init_MCU; sử dụng S32K144.h và LED BSP. Chưa được main hiện tại gọi trực tiếp. |
 | CAN reference driver | [Can.c](../can_task/driver/src/Can.c), [Can.h](../can_task/driver/inc/Can.h), [Can_Cfg.c](../can_task/driver/src/Can_Cfg.c) | FlexCAN0; config normal/loopback, MB0 Tx và MB1 Rx exact 0x123. Driver include/callback trực tiếp CanUpper; không phải driver mới. |
 | Reference upper/test | [CanUpper.c](../can_task/upper/src/CanUpper.c), [test/main.c](../can_task/test/main.c) | CanUpper gọi driver, giữ PDU data/status; harness #if 0. Chưa nối với firmware main. |
@@ -87,7 +92,7 @@ controller -> CanDrv -> HRH + CAN ID -> CanIf Rx L-PDU
            -> PduR route -> COM I-PDU -> signal consumer
 ~~~
 
-COM sở hữu packing/timing; PduR sở hữu routing; CanIf sở hữu CAN ID mapping; CanDrv sở hữu HOH/controller. GlobalPduId là identity hệ thống qua config và implicit trên dây trong Direct Binding. Chưa có runtime hoặc profile mới cho luồng này.
+COM sở hữu packing/timing; PduR sở hữu routing; CanIf sở hữu CAN ID mapping; CanDrv sở hữu HOH/controller. CanDrv và CanIf đã có runtime mới với profile CAN0/VehicleStatus; PduR/COM chưa được triển khai. GlobalPduId là identity hệ thống qua config và implicit trên dây trong Direct Binding; common constants chưa phải binding matrix đầy đủ.
 
 ## Build và entrypoints
 
@@ -102,9 +107,9 @@ COM sở hữu packing/timing; PduR sở hữu routing; CanIf sở hữu CAN ID 
 
 - Can.c hiện dùng direct volatile register access, không còn MMIO wrappers/Can_ModifyRegister. Các giai đoạn init là static helpers có English comments và shared bounded wait/logging. Host test runner tạo Can_instrumented.c bằng tests/can_driver/instrument_driver.py trong build directory để mô phỏng MMIO; ARM compiler kiểm tra original production source. Refactor giữ profile/runtime và đạt lại 9 nhóm tests. File can_task/driver/src/Can.c vẫn là reference riêng.
 
-- Thiết kế và profile hiện tại: [can-driver-design.md](can-driver-design.md). Driver CAN0 mới đã thống nhất Can_Init return type và thực hiện Tx snapshot/completion/Rx contracts. Phần multi-controller/config validation trong thiết kế là hướng mở rộng; implementation tạm bỏ qua tables theo yêu cầu hardcode CAN0. CanIf production callbacks vẫn cần được triển khai.
+- Thiết kế và profile hiện tại: [can-driver-design.md](can-driver-design.md). Driver thực hiện Tx snapshot/completion/Rx contracts; CanIf production callbacks đã tồn tại. Bước tích hợp tiếp theo là PduR callbacks/routes và COM. Multi-controller/config-driven driver vẫn là hướng mở rộng.
 
-- Types/config/API/logic CAN mới: dưới drivers/can/can_driver và common. CAN0 profile hiện tại đã có tests/ARM compile. Khi chuyển sang config-driven hoặc nhiều controller, bổ sung validation và tests tương ứng; không tự bật CAN1 từ tables hiện còn baudRate 0.
+- Types/config/API/logic CAN mới: dưới drivers/can/can_driver, canif và common. CanIf validate PDU references; CanDrv validate toàn bộ controller/HOH và resolve ID nhưng phần register vẫn CAN0. Multi-controller/bit timing động cần implementation và tests riêng; CAN1 macro reference cũ trong runner đã được loại bỏ.
 - Clock/pin/transceiver: BSP [board_can.c](../bsp/can/board_can.c). Hiện setup SOSC ngoài 8 MHz, PORTC/PORTE/FlexCAN0 gate, PTE4 RX/PTE5 TX ALT5 và GPIO PTC14/PTE11 cho transceiver. Watchdog/SOSC waits chưa có timeout.
 - Reference register/MB handling: can_task/driver và guide [CAN_Homework_S32K144EVB.md](../can_task/CAN_Homework_S32K144EVB.md). Tách coupling CanUpper và đối chiếu assignment khi tái sử dụng.
 - Model ownership, slot, retry, Direct Binding: đọc assignment/notes trước; không tiếp tục các plan đã xóa hoặc tự dùng lại local IDs của profile cũ.
@@ -116,7 +121,7 @@ COM sở hữu packing/timing; PduR sở hữu routing; CanIf sở hữu CAN ID 
 
 - Lượt cập nhật này đối chiếu file inventory, dung lượng placeholder, main/BSP/reference, requirements và source entries với hai core-memory files.
 - Kiểm tra tài liệu bằng local Markdown links và git diff --check cho hai file được sửa.
-- Runner host mới tại tests/can_driver đạt 9 nhóm tests; Can.c compile ARM với -Wall -Wextra -Werror. Log: build/can_driver/verification.log. Chưa full firmware build/link/flash hoặc loopback sau reset; PASS/report của implementation đã xóa vẫn chỉ là lịch sử.
+- Runner tests/can_driver đạt 11 nhóm fixtures và 9 nhóm production config; Can.c compile ARM với -Wall -Wextra -Werror. Log: build/can_driver/verification.log. CanIf tests và relocatable integration link cũng đạt lại. Chưa full firmware build/link/flash hoặc loopback sau reset; PASS/report của implementation đã xóa vẫn chỉ là lịch sử.
 - Khi có implementation mới, thiết lập tests tương ứng với contract/config mới. Host fake registers không thay bằng chứng trên board; loopback không thay test ba ECU.
 - Chưa có firmware cộng tác viên hoặc message matrix chính thức; chưa xác nhận CAN ID/bitrate/DLC/endian/scale/timing tương thích liên ECU.
 - [can-init-sequence.md](can-init-sequence.md) và API_SPEC chưa được cập nhật trong lượt này; xem như guide/draft cần review, không phải mô tả implementation hiện tại.

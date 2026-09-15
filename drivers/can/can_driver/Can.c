@@ -65,8 +65,21 @@ typedef enum
     CAN_LOG_RX_FRAME,
     CAN_LOG_RX_INVALID,
     CAN_LOG_RX_OVERRUN,
-    CAN_LOG_RX_BUSY
+    CAN_LOG_RX_BUSY,
+    CAN_LOG_CONFIG_ERROR
 } Can_LogEventType;
+
+typedef enum
+{
+    CAN_CONFIG_DUPLICATE_CONTROLLER = 1,
+    CAN_CONFIG_DUPLICATE_HOH,
+    CAN_CONFIG_CONTROLLER_REFERENCE,
+    CAN_CONFIG_OBJECT_TYPE,
+    CAN_CONFIG_DUPLICATE_RESOURCE,
+    CAN_CONFIG_UNSUPPORTED_CONTROLLER,
+    CAN_CONFIG_UNSUPPORTED_OBJECT,
+    CAN_CONFIG_UNSUPPORTED_COUNTS
+} Can_ConfigErrorType;
 
 typedef struct
 {
@@ -81,6 +94,7 @@ static Can_StateType Can_State = CAN_STATE_UNINIT;
 static uint8_t Can_TxBusy = 0U;
 static PduIdType Can_TxHandle = 0U;
 static Can_IdType Can_TxId = 0U;
+static const Can_HardwareObjectConfigType *Can_RxObject = NULL;
 
 /* Inspect these volatile structured records in the debugger; no UART required. */
 static volatile Can_LogRecordType Can_LogRecords[CAN_LOG_CAPACITY];
@@ -98,6 +112,130 @@ static void Can_Log(Can_LogEventType event, uint32_t detail)
     Can_LogRecords[index].canId = Can_TxId;
     Can_LogRecords[index].sequence = sequence;
     Can_LogSequence = sequence + 1U;
+}
+
+/** Resolve a controller ID exactly once; missing or duplicate IDs return NULL. */
+static const Can_ControllerConfigType *Can_GetController(Can_ControllerIdType id)
+{
+    const Can_ControllerConfigType *controller = NULL;
+    size_t index;
+
+    for (index = 0U; index < CAN_NUM_CONTROLLERS; index++)
+    {
+        if (Can_ControllerConfig[index].controllerId == id)
+        {
+            if (controller != NULL)
+            {
+                return NULL;
+            }
+            controller = &Can_ControllerConfig[index];
+        }
+    }
+    return controller;
+}
+
+/** Resolve the shared Tx/Rx HOH namespace to one object and existing controller. */
+static const Can_HardwareObjectConfigType *Can_GetHardwareObject(
+    Can_HwHandleType handle, Can_ObjectType expectedType)
+{
+    const Can_HardwareObjectConfigType *object = NULL;
+    size_t index;
+
+    for (index = 0U; index < CAN_NUM_HOH; index++)
+    {
+        if (Can_HardwareObjectConfig[index].objectId == handle)
+        {
+            if (object != NULL)
+            {
+                return NULL;
+            }
+            object = &Can_HardwareObjectConfig[index];
+        }
+    }
+    if ((object == NULL) || (object->objectType != expectedType) ||
+        (Can_GetController(object->controllerId) == NULL))
+    {
+        return NULL;
+    }
+    return object;
+}
+
+/** Log the configuration reason and offending table index without touching HW. */
+static Can_ReturnType Can_RejectConfig(Can_ConfigErrorType reason, size_t index)
+{
+    /* Upper 16 bits identify the reason; lower 16 bits identify the entry. */
+    Can_Log(CAN_LOG_CONFIG_ERROR, ((uint32_t)reason << 16U) |
+                                ((uint32_t)index & 0xFFFFU));
+    return CAN_NOT_OK;
+}
+
+/** Validate every controller/HOH and reject profiles unsupported by fixed CAN0 HW. */
+static Can_ReturnType Can_ValidateConfig(void)
+{
+    size_t index;
+    size_t previous;
+    const Can_HardwareObjectConfigType *rxObject = NULL;
+
+    for (index = 0U; index < CAN_NUM_CONTROLLERS; index++)
+    {
+        for (previous = 0U; previous < index; previous++)
+        {
+            if (Can_ControllerConfig[index].controllerId ==
+                Can_ControllerConfig[previous].controllerId)
+            {
+                return Can_RejectConfig(CAN_CONFIG_DUPLICATE_CONTROLLER, index);
+            }
+        }
+        if ((Can_ControllerConfig[index].instance != 0U) ||
+            (Can_ControllerConfig[index].baudRate != 500000U))
+        {
+            return Can_RejectConfig(CAN_CONFIG_UNSUPPORTED_CONTROLLER, index);
+        }
+    }
+    for (index = 0U; index < CAN_NUM_HOH; index++)
+    {
+        const Can_HardwareObjectConfigType *object = &Can_HardwareObjectConfig[index];
+
+        for (previous = 0U; previous < index; previous++)
+        {
+            if (object->objectId == Can_HardwareObjectConfig[previous].objectId)
+            {
+                return Can_RejectConfig(CAN_CONFIG_DUPLICATE_HOH, index);
+            }
+            if ((object->controllerId == Can_HardwareObjectConfig[previous].controllerId) &&
+                (object->hwObjectIndex == Can_HardwareObjectConfig[previous].hwObjectIndex))
+            {
+                return Can_RejectConfig(CAN_CONFIG_DUPLICATE_RESOURCE, index);
+            }
+        }
+        if (Can_GetController(object->controllerId) == NULL)
+        {
+            return Can_RejectConfig(CAN_CONFIG_CONTROLLER_REFERENCE, index);
+        }
+        if ((object->objectType != CAN_OBJECT_TYPE_TX) &&
+            (object->objectType != CAN_OBJECT_TYPE_RX))
+        {
+            return Can_RejectConfig(CAN_CONFIG_OBJECT_TYPE, index);
+        }
+        if (((object->objectType == CAN_OBJECT_TYPE_TX) &&
+             (object->hwObjectIndex != CAN_TX_MB_INDEX)) ||
+            ((object->objectType == CAN_OBJECT_TYPE_RX) &&
+             (object->hwObjectIndex != CAN_RX_MB_INDEX)))
+        {
+            return Can_RejectConfig(CAN_CONFIG_UNSUPPORTED_OBJECT, index);
+        }
+        if (object->objectType == CAN_OBJECT_TYPE_RX)
+        {
+            rxObject = Can_GetHardwareObject(object->objectId, CAN_OBJECT_TYPE_RX);
+        }
+    }
+    /* The hardware implementation owns exactly one CAN0 and two mailboxes. */
+    if ((CAN_NUM_CONTROLLERS != 1U) || (CAN_NUM_HOH != 2U) || (rxObject == NULL))
+    {
+        return Can_RejectConfig(CAN_CONFIG_UNSUPPORTED_COUNTS, 0U);
+    }
+    Can_RxObject = rxObject;
+    return CAN_OK;
 }
 
 /** Wait a bounded number of reads for masked bits; return zero on timeout. */
@@ -275,13 +413,19 @@ static Can_ReturnType Can_ExitFreezeMode(void)
  * Initialize CAN0 for 500 kbit/s standard Classical CAN with the 8 MHz SOSC.
  * MB8 transmits and MB9 accepts all standard IDs; CanIf filters logical PDUs.
  * BSP setup must precede this call. Static helpers implement each hardware stage.
- * Return CAN_NOT_OK on clock/handshake failure or an already initialized driver.
+ * Validate all controller/HOH entries before accessing hardware registers.
+ * Return CAN_NOT_OK on invalid config, clock/handshake failure or repeated init.
  */
 Can_ReturnType Can_Init(void)
 {
     if (Can_State == CAN_STATE_READY)
     {
         Can_Log(CAN_LOG_REJECTED, 1U);
+        return CAN_NOT_OK;
+    }
+    Can_RxObject = NULL;
+    if (Can_ValidateConfig() != CAN_OK)
+    {
         return CAN_NOT_OK;
     }
     if ((SCG->SOSCCSR & SCG_SOSCCSR_SOSCVLD_MASK) == 0U)
@@ -314,7 +458,7 @@ Can_ReturnType Can_Init(void)
 }
 
 /**
- * Accept one standard CAN0 HTH0/MB8 data frame without waiting for the bus.
+ * Resolve a configured Tx HOH and accept one CAN0/MB8 frame without bus waiting.
  * Copy all bytes before CAN_OK; retain the software PDU handle for completion.
  * Return CAN_BUSY until polling frees MB8, or CAN_NOT_OK for invalid input/fault.
  */
@@ -324,7 +468,8 @@ Can_ReturnType Can_Write(Can_HwHandleType Hth, const Can_PduType *PduInfo)
     uint32_t code;
     uint8_t index;
 
-    if ((Can_State != CAN_STATE_READY) || (Hth != CAN_HTH_CAN0_TX) ||
+    if ((Can_State != CAN_STATE_READY) ||
+        (Can_GetHardwareObject(Hth, CAN_OBJECT_TYPE_TX) == NULL) ||
         (PduInfo == NULL))
     {
         Can_Log(CAN_LOG_REJECTED, 2U);
@@ -405,7 +550,7 @@ void Can_MainFunction_Write(void)
 }
 
 /**
- * Poll MB9 once and deliver a standard Classical CAN data frame with HRH1.
+ * Poll MB9 once and deliver a standard Classical frame with its configured HRH.
  * Clear IFLAG before reading TIMER to unlock the MB, as required by the RM.
  * Do not force RX_EMPTY after servicing: hardware keeps the MB receivable.
  * The callback must consume/copy the local payload before returning.
@@ -452,8 +597,7 @@ void Can_MainFunction_Read(void)
 
     code = (cs & CAN_MB_CODE_MASK) >> CAN_MB_CODE_SHIFT;
     rxPdu.canId = (id >> CAN_STANDARD_ID_SHIFT) & CAN_STANDARD_ID_MAX;
-    rxPdu.length = (PduLengthType)((cs & CAN_WMBn_CS_DLC_MASK) >>
-                                   CAN_WMBn_CS_DLC_SHIFT);
+    rxPdu.length = (PduLengthType)((cs & CAN_WMBn_CS_DLC_MASK) >> CAN_WMBn_CS_DLC_SHIFT);
     rxPdu.dataPtr = data;
     if (((code != CAN_MB_CODE_RX_FULL) && (code != CAN_MB_CODE_RX_OVERRUN)) ||
         ((cs & (CAN_WMBn_CS_IDE_MASK | CAN_WMBn_CS_RTR_MASK | CAN_MB_EDL_MASK)) != 0U) ||
@@ -469,9 +613,8 @@ void Can_MainFunction_Read(void)
     }
     for (index = 0U; index < rxPdu.length; index++)
     {
-        data[index] = (uint8_t)(words[index / 4U] >>
-                                (24U - ((index % 4U) * 8U)));
+        data[index] = (uint8_t)(words[index / 4U] >> (24U - ((index % 4U) * 8U)));
     }
     Can_Log(CAN_LOG_RX_FRAME, rxPdu.canId);
-    CanIf_RxIndication(CAN_HRH_CAN0_RX, &rxPdu);
+    CanIf_RxIndication(Can_RxObject->objectId, &rxPdu);
 }

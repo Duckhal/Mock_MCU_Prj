@@ -9,8 +9,10 @@
  * @pre Initialize the board's 8 MHz SOSC, CAN0 pins and transceiver first
  *      (disable_WDOG() and init_MCU() in the current BSP).
  * @details Fixed profile: 500 kbit/s, standard 11-bit Classical CAN data frames,
- *          DLC 0..8, Tx MB8/HTH0 and BasicCAN Rx MB9/HRH1; CAN1 is unsupported.
- *          Configuration tables are unused by this temporary implementation.
+ *          DLC 0..8, Tx MB8 and BasicCAN Rx MB9; CAN1 is unsupported.
+ *          Validates all controller and HOH configuration entries before HW access.
+ *          HOH IDs share one unique Tx/Rx namespace; each references one controller.
+ *          Only one instance-0 controller at 500 kbit/s and these two MBs are supported.
  * @return CAN_OK when ready; CAN_NOT_OK on failure or repeated initialization.
  * @note May be called again after a latched fault once its cause is corrected.
  *       This resets CAN0 and abandons the failed request without confirmation.
@@ -19,7 +21,7 @@ Can_ReturnType Can_Init(void);
 
 /**
  * @brief Accept one CAN0 transmission without waiting for physical completion.
- * @param Hth Must be CAN_HTH_CAN0_TX; other handles are rejected.
+ * @param Hth Configured Tx HOH ID; resolved with its controller, independent of index.
  * @param PduInfo Standard CAN ID, DLC 0..8, software PDU handle and payload.
  *        sdu may be NULL only for a zero-length frame.
  * @return CAN_OK if copied and accepted; CAN_BUSY if MB8 is still reserved;
@@ -42,7 +44,7 @@ Can_ReturnType Can_Write(
 void Can_MainFunction_Write(void);
 
 /**
- * @brief Poll one received CAN0 frame and deliver HRH1 plus CAN ID to CanIf.
+ * @brief Poll one CAN0 frame and deliver the configured Rx HOH plus CAN ID to CanIf.
  * @details CanIf must supply CanIf_RxIndication(Can_HwHandleType Hrh,
  *          const Can_RxPduType *RxPdu). RxPdu and dataPtr are valid only during
  *          this synchronous callback; the receiver must copy retained data.

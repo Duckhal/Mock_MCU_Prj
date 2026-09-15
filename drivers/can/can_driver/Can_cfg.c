@@ -1,10 +1,13 @@
 #include "Can_Cfg.h"
 
+#define CAN0_BAUDRATE           (500000U)
+
 const Can_ControllerConfigType Can_ControllerConfig[CAN_NUM_CONTROLLERS] =
 {
     {
         .controllerId = CAN_CONTROLLER_0,
-        .instance = 0U
+        .instance = 0U,
+        .baudRate = CAN0_BAUDRATE
     }
 };
 
