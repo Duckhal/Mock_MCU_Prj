@@ -12,6 +12,7 @@ build/
 .metadata/
 .settings/language.settings.xml
 *.launch
+tests/
 
 # Temporary files
 *.tmp
