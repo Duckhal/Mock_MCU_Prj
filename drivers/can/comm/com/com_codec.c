@@ -1,5 +1,9 @@
 #include "com_codec.h"
 
+/*
+ * Encodes a Signal value and its Update Bit into the configured I-PDU slot.
+ * The configuration, value range, and byte order are validated before writing.
+ */
 Comm_ReturnType Com_CodecEncodeSignal(
                                         const Com_SignalConfigType *signalConfig,
                                         uint64_t signalValue,
@@ -100,6 +104,10 @@ Comm_ReturnType Com_CodecEncodeSignal(
     return COMM_OK;
 }
 
+/*
+ * Decodes a Signal Slot from the I-PDU buffer into its value and Update Bit.
+ * The input buffer is read only, and both results are returned through outputs.
+ */
 Comm_ReturnType Com_CodecDecodeSignal(
                                         const Com_SignalConfigType *signalConfig,
                                         const uint8_t *ipduBuffer,
@@ -108,10 +116,8 @@ Comm_ReturnType Com_CodecDecodeSignal(
                                         bool *updateBit
                                     )
 {
-    if ((signalConfig == NULL) ||
-        (ipduBuffer == NULL) ||
-        (signalValue == NULL) ||
-        (updateBit == NULL))
+    if ((signalConfig == NULL) || (ipduBuffer == NULL) ||
+        (signalValue == NULL) || (updateBit == NULL))
     {
         return COMM_INVALID_PARAM;
     }
@@ -131,8 +137,7 @@ Comm_ReturnType Com_CodecDecodeSignal(
     uint16_t startByte = signalConfig->slotStartBit / 8U;
     uint16_t slotBytes = signalConfig->slotLengthBits / 8U;
 
-    if (((uint32_t)startByte + (uint32_t)slotBytes) >
-        (uint32_t)ipduLengthBytes)
+    if (((uint32_t)startByte + (uint32_t)slotBytes) > (uint32_t)ipduLengthBytes)
     {
         return COMM_INVALID_PARAM;
     }
@@ -171,6 +176,10 @@ Comm_ReturnType Com_CodecDecodeSignal(
     return COMM_OK;
 }
 
+/*
+ * Clears only the Update Bit of the configured Signal Slot in the I-PDU buffer.
+ * The Signal payload and every byte outside the slot remain unchanged.
+ */
 Comm_ReturnType Com_CodecClearUpdateBit(
                                         const Com_SignalConfigType *signalConfig,
                                         uint8_t *ipduBuffer,
@@ -202,4 +211,23 @@ Comm_ReturnType Com_CodecClearUpdateBit(
     {
         return COMM_INVALID_PARAM;
     }
+
+    uint16_t updateBitByte;
+
+    if (signalConfig->byteOrder == COM_BYTE_ORDER_LITTLE_ENDIAN)
+    {
+        updateBitByte = startByte;
+    }
+    else if (signalConfig->byteOrder == COM_BYTE_ORDER_BIG_ENDIAN)
+    {
+        updateBitByte = startByte + slotBytes - 1U;
+    }
+    else
+    {
+        return COMM_INVALID_PARAM;
+    }
+
+    ipduBuffer[updateBitByte] &= 0xFEU;
+
+    return COMM_OK;
 }

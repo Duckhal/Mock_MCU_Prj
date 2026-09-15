@@ -9,7 +9,7 @@
 typedef uint16_t Com_SignalIdType;
 typedef uint16_t Com_SignalGroupIdType;
 
-/* Unsigned application value types supported by the Part 1 codec. */
+/* Unsigned application value types. */
 typedef enum
 {
     COM_UINT8 = 0U,
