@@ -8,7 +8,7 @@ CanDrv validation (2026-09-15): Can.c đã validate toàn bộ controller/HOH tr
 
 Project C bare-metal S32 Design Studio/Eclipse cho S32K144. Mục tiêu là mock ba ECU giao tiếp CAN với hai đầu UART nối PC. Người dùng đã xóa stack CAN mới và docs/implement để triển khai lại.
 
-can_driver và CanIf đã triển khai bốn API mỗi module với comments tiếng Anh. CanStack_Types.h có common PDU types và Std_ReturnType/E_OK/E_NOT_OK. Entrypoint hiện chứa board loopback harness và hai PduR capture callbacks; PduR production chưa triển khai. Firmware FLASH harness đã compile/link từ source hiện tại, nhưng chưa chạy trên board.
+can_driver và CanIf đã triển khai bốn API mỗi module. PduR có PduR_ComTransmit (Tx routing) và Tx/Rx config, chưa Rx/confirmation APIs. COM chỉ có types/config. Main chứa board harness và CanIf-boundary capture callbacks cho hai API PduR còn thiếu. Firmware FLASH harness đã compile/link từ source hiện tại với PduR thật, chưa chạy board.
 
 ## Cây thư mục còn lại
 
@@ -25,9 +25,11 @@ drivers/
   can/common/                CanStack_Types.h, CanStack_Cfg.h/c
   can/can_driver/            Can.c/h, Can_Types.h, Can_cfg.c, Can_Cfg.h
   can/canif/                 CanIf.c/h, CanIf_Types.h, CanIf_Cfg.c/h
+  can/pdur/                  PduR.c/h, PduR_Types.h, PduR_Cfg.c/h
+  can/com/                   Com types/config; chưa runtime APIs
   adc/, common/, gpio/, lpit/, nvic/, rtc/, systick/, uart/
 middlewares/                 ring_buffer.c/h
-src/                         main.c — board loopback CanDrv+CanIf và PduR capture callbacks
+src/                         main.c — board loopback CanDrv+CanIf+PduR Tx
 requirements/                assignment, architecture notes, README, overview
   assumptions/               API_SPEC, flow.xml, Tx-Rx Flow PNG
 docs/                        context.md, codebase-map.md, can-init-sequence.md
@@ -42,7 +44,8 @@ docs/implement không tồn tại. Tests CAN0 mới nằm tại tests/can_driver
 
 | Module | File/ranh giới còn tồn tại | Phụ thuộc và trạng thái |
 |---|---|---|
-| Entrypoint | [src/main.c](../src/main.c) | Board harness: BSP/Can_Init/Freeze LPB+clear SRXDIS/CanIf_Init; Can_Write và CanIf_Transmit DLC 0..8 (18 case), BUSY/copy/exactly-once callbacks. PduR captures và volatile g_CanLoopbackTestResult nằm trong main; green LED báo PASS. |
+| Entrypoint | [src/main.c](../src/main.c) | 27 loopback cases: Can_Write/CanIf_Transmit/PduR_ComTransmit DLC0..8; 4 invalid PduR requests; BUSY/caller bytes/copy/exactly-once CanIf callbacks. Volatile g_CanLoopbackTestResult và capture callbacks nằm trong main; green LED báo PASS. |
+| PduR Tx | [PduR.c](../drivers/can/pdur/PduR.c), [PduR_Cfg.c](../drivers/can/pdur/PduR_Cfg.c) | PduR_ComTransmit lookup COM source ID→CanIf dest ID, giữ payload và return. Config VehicleStatus global0x0010. Rx config có nhưng runtime Rx/confirmation chưa có; main captures không kiểm chứng hai routes này. |
 | Startup/linker | Project_Settings/Startup_Code, Project_Settings/Linker_Files | Reset/vector/memory layout và vendor headers trong include; chưa audit toàn bộ ở lượt này. |
 | CAN common mới | [CanStack_Types.h](../drivers/can/common/CanStack_Types.h), [CanStack_Cfg.h](../drivers/can/common/CanStack_Cfg.h), [CanStack_Cfg.c](../drivers/can/common/CanStack_Cfg.c) | Common PDU types đã có; header config định nghĩa ba GlobalPduId vehicle/engine/climate 0x0010..0x0012. CanStack_Cfg.c còn rỗng; chưa có binding qua các tầng. |
 | CAN driver mới | [Can.c](../drivers/can/can_driver/Can.c), [Can.h](../drivers/can/can_driver/Can.h), [Can_Types.h](../drivers/can/can_driver/Can_Types.h), [Can_cfg.c](../drivers/can/can_driver/Can_cfg.c), [Can_Cfg.h](../drivers/can/can_driver/Can_Cfg.h) | Bốn API, hardware CAN0/8 MHz oscillator/500 kbit/s, standard Classical data, Tx MB8/Rx MB9. Validate toàn bộ config và resolve HOH→object→controller theo ID. Production HTH0/HRH1; logical IDs có thể sparse. Snapshot Tx, saved swPduHandle, bounded waits và debugger logs; callbacks nối sang CanIf. |
@@ -70,8 +73,9 @@ Entrypoint còn trên đĩa:
 src/main.c
   -> BSP watchdog/oscillator/pins/LED
   -> Can_Init -> Freeze LPB=1, SRXDIS=0 -> CanIf_Init
-  -> Can_Write / CanIf_Transmit, DLC 0..8
-  -> real CanDrv/CanIf -> PduR capture callbacks trong main.c
+  -> PduR invalid requests (4)
+  -> Can_Write / CanIf_Transmit / PduR_ComTransmit, DLC 0..8
+  -> real PduR Tx/CanIf/CanDrv -> CanIf-boundary captures trong main.c
   -> PASS/FAIL debugger result -> vòng lặp vô hạn
 ~~~
 
@@ -94,7 +98,7 @@ controller -> CanDrv -> HRH + CAN ID -> CanIf Rx L-PDU
            -> PduR route -> COM I-PDU -> signal consumer
 ~~~
 
-COM sở hữu packing/timing; PduR sở hữu routing; CanIf sở hữu CAN ID mapping; CanDrv sở hữu HOH/controller. CanDrv và CanIf đã có runtime mới với profile CAN0/VehicleStatus; PduR/COM chưa được triển khai. GlobalPduId là identity hệ thống qua config và implicit trên dây trong Direct Binding; common constants chưa phải binding matrix đầy đủ.
+COM sở hữu packing/timing; PduR sở hữu routing; CanIf sở hữu CAN ID mapping; CanDrv sở hữu HOH/controller. CanDrv/CanIf đã có runtime CAN0/VehicleStatus; PduR Tx routing có runtime, Rx/confirmation và COM chưa triển khai. GlobalPduId là identity qua config, không serialize payload; common constants chưa phải binding matrix đầy đủ.
 
 ## Build và entrypoints
 
@@ -130,4 +134,6 @@ COM sở hữu packing/timing; PduR sở hữu routing; CanIf sở hữu CAN ID 
 
 ## Board loopback harness hiện tại
 
-Chỉ thêm logic vào src/main.c; không tạo source/header/test file mới. Host simulation C stdin dùng modules thật/MMIO transformer pass 18 case và các nhánh lỗi; ARM Cortex-M4 FLASH compile/link từ source/startup/BSP/GPIO/NVIC thật pass. ELF: build/canif/CanIf_loopback.elf; logs main_loopback_host_debug.log và main_loopback_build.log. Debugger: status=2, passedCases=18, txConfirmations=18, rxIndications=18 nghĩa là PASS; FAIL=3 giữ stage/error/dlc/register snapshot. Reset MCU để chạy lại. Chưa flash/test board; internal loopback không kiểm tra dây CAN/transceiver. NXP RM CTRL1[LPB] yêu cầu Freeze khi ghi LPB và SRXDIS=0 để self receive.
+Main.c có comment banners Can Test/CanIf Test/PduR Test cho init, config, Tx và captures, cùng shared helpers/checks; không tách file hoặc đổi logic.
+
+Chỉ thêm logic vào src/main.c; không tạo source/header/test file mới. Host simulation C stdin dùng modules thật/MMIO transformer pass 27 case và 4 PduR rejections, với config production và sparse COM ID17→CanIf ID0; các nhánh lỗi cũng pass. Strict ARM FLASH compile/link với PduR.c/config thật pass; không còn undefined symbols. ELF: build/canif/CanIf_loopback.elf; logs main_loopback_host_debug.log và main_loopback_build.log. Debugger PASS: status=2, passedCases/txConfirmations/rxIndications=27, pdurPassedCases=9, pdurRejectedCases=4. FAIL=3 giữ txPath/stage/error/dlc/register snapshot. Chưa flash/test board; internal loopback không kiểm tra dây/transceiver. PduR Rx/confirmation không nằm trong coverage vì chưa triển khai; capture callbacks ở CanIf boundary. Reset để chạy lại.

@@ -4,14 +4,23 @@
 #include "../drivers/can/can_driver/Can.h"
 #include "../drivers/can/canif/CanIf.h"
 #include "../drivers/can/canif/CanIf_Cfg.h"
+#include "../drivers/can/pdur/PduR.h"
+#include "../drivers/can/pdur/PduR_Cfg.h"
+#include "../drivers/can/com/Com_Cfg.h"
+#include "../drivers/can/common/CanStack_Cfg.h"
 #include <stddef.h>
 
-/* Board-only harness. All test code and PduR capture callbacks live here.
+/* Board-only harness. All test code and CanIf-boundary capture callbacks live here.
  * Use Debug_FLASH and reset the MCU to run again. No CAN peer is required.
  * Break at the final main loop and inspect g_CanLoopbackTestResult.
  * This tests internal loopback, not CAN wiring or transceiver operation.
- * Do not link these capture callbacks with a future production PduR implementation.
+ * PduR_ComTransmit uses the real PduR module. Its Rx/confirmation APIs are absent;
+ * captures below observe the CanIf boundary, not PduR Rx/confirmation routing.
+ * Remove captures when production PduR_CanIf callbacks are implemented.
  */
+/*=========================================================================
+ * Shared Test Configuration and Debug Results
+ *==========================================================================*/
 #define LOOPBACK_FREEZE_LIMIT    (100000UL)
 #define LOOPBACK_POLL_LIMIT      (2000000UL) /* Iterations, not milliseconds. */
 #define LOOPBACK_EXTRA_POLLS     (32U)
@@ -34,8 +43,17 @@ typedef enum
     LOOPBACK_STAGE_CANIF_INIT,
     LOOPBACK_STAGE_DRIVER_TX,
     LOOPBACK_STAGE_CANIF_TX,
-    LOOPBACK_STAGE_DONE
+    LOOPBACK_STAGE_DONE,
+    LOOPBACK_STAGE_PDUR_VALIDATE,
+    LOOPBACK_STAGE_PDUR_TX
 } Loopback_StageType;
+
+typedef enum
+{
+    LOOPBACK_TX_DRIVER = 0,
+    LOOPBACK_TX_CANIF,
+    LOOPBACK_TX_PDUR
+} Loopback_TxPathType;
 
 typedef enum
 {
@@ -51,7 +69,8 @@ typedef enum
     LOOPBACK_ERROR_TX_CALLBACK,
     LOOPBACK_ERROR_RX_CALLBACK,
     LOOPBACK_ERROR_PAYLOAD,
-    LOOPBACK_ERROR_TIMEOUT
+    LOOPBACK_ERROR_TIMEOUT,
+    LOOPBACK_ERROR_PDUR_REJECTION
 } Loopback_ErrorType;
 
 typedef struct
@@ -59,9 +78,16 @@ typedef struct
     Loopback_StatusType status;
     Loopback_StageType stage;
     Loopback_ErrorType error;
-    uint32_t passedCases;       /* Expected: 18 (two paths, DLC 0..8). */
-    uint32_t txConfirmations;   /* Cumulative; expected: 18. */
-    uint32_t rxIndications;     /* Cumulative; expected: 18. */
+    uint32_t passedCases;       /* Expected: 27 (three paths, DLC 0..8). */
+    uint32_t txConfirmations;   /* Cumulative; expected: 27. */
+    uint32_t rxIndications;     /* Cumulative; expected: 27. */
+    uint32_t pdurPassedCases;   /* Expected: 9 actual PduR Tx loopback cases. */
+    uint32_t pdurRejectedCases; /* Expected: 4 invalid requests rejected. */
+    Loopback_TxPathType txPath;
+    PduIdType pdurSourcePduId;
+    PduIdType pdurDestPduId;
+    GlobalPduIdType pdurGlobalPduId; /* Config metadata; never payload bytes. */
+    Std_ReturnType pdurRejectionResult;
     uint32_t caseTxCount;       /* Expected: exactly one per case. */
     uint32_t caseRxCount;
     uint32_t pollIterations;
@@ -85,6 +111,9 @@ typedef struct
 volatile Loopback_ResultType g_CanLoopbackTestResult;
 static uint8_t Loopback_TxBytes[LOOPBACK_DATA_LENGTH];
 
+/*=========================================================================
+ * Shared Test Helpers
+ *==========================================================================*/
 /** Capture controller diagnostics without reading/locking the Rx mailbox CS. */
 static void Loopback_Snapshot(void)
 {
@@ -105,6 +134,9 @@ static void Loopback_Fail(Loopback_ErrorType error)
     }
 }
 
+/*=========================================================================
+ * Can Test - Freeze Handshakes and Internal Loopback Setup
+ *==========================================================================*/
 /** Wait for a bounded MCR handshake; return zero if the requested bits never match. */
 static uint8_t Loopback_WaitMcr(uint32_t mask, uint32_t expected)
 {
@@ -152,6 +184,9 @@ static uint8_t Loopback_EnableMode(void)
     return 1U;
 }
 
+/*=========================================================================
+ * CanIf Test - TxConfirmation and RxIndication Capture
+ *==========================================================================*/
 /** Capture the real CanIf confirmation and check the local PDU ID exactly once. */
 void PduR_CanIfTxConfirmation(PduIdType TxPduId)
 {
@@ -200,8 +235,62 @@ void PduR_CanIfRxIndication(PduIdType RxPduId, const PduInfoType *PduInfoPtr)
     }
 }
 
-/** Send one DLC case through the selected API, checking BUSY, copy and callbacks. */
-static uint8_t Loopback_RunCase(uint8_t throughCanIf, uint8_t length)
+/*=========================================================================
+ * PduR Test - Invalid Transmit Requests
+ *==========================================================================*/
+/** Verify invalid PduR requests fail without creating a Tx or Rx callback. */
+static uint8_t Loopback_CheckPduRRejections(void)
+{
+    uint8_t index;
+    PduInfoType pdu;
+    Std_ReturnType result;
+
+    g_CanLoopbackTestResult.stage = LOOPBACK_STAGE_PDUR_VALIDATE;
+    for (index = 0U; index < 4U; index++)
+    {
+        pdu.SduDataPtr = Loopback_TxBytes;
+        pdu.SduLength = LOOPBACK_DATA_LENGTH;
+        switch (index)
+        {
+        case 0U:
+            /* Exactly one route was checked by main; this ID cannot match it. */
+            result = PduR_ComTransmit((PduIdType)(COM_IPDU_VEHICLE_STATUS ^ 0xFFFFU), &pdu);
+            break;
+        case 1U:
+            result = PduR_ComTransmit(COM_IPDU_VEHICLE_STATUS, NULL);
+            break;
+        case 2U:
+            pdu.SduLength = LOOPBACK_DATA_LENGTH + 1U;
+            result = PduR_ComTransmit(COM_IPDU_VEHICLE_STATUS, &pdu);
+            break;
+        default:
+            pdu.SduLength = 1U;
+            pdu.SduDataPtr = NULL;
+            result = PduR_ComTransmit(COM_IPDU_VEHICLE_STATUS, &pdu);
+            break;
+        }
+        g_CanLoopbackTestResult.pdurRejectionResult = result;
+        if (result != E_NOT_OK)
+        {
+            Loopback_Fail(LOOPBACK_ERROR_PDUR_REJECTION);
+            return 0U;
+        }
+        Can_MainFunction_Write();
+        Can_MainFunction_Read();
+        if (g_CanLoopbackTestResult.status == LOOPBACK_FAIL)
+        {
+            return 0U;
+        }
+        g_CanLoopbackTestResult.pdurRejectedCases++;
+    }
+    return 1U;
+}
+
+/*=========================================================================
+ * Shared Test Case - Payload Preparation and Module Selection
+ *==========================================================================*/
+/** Send one DLC case through CanDrv, CanIf or PduR; check BUSY/copy/callbacks. */
+static uint8_t Loopback_RunCase(Loopback_TxPathType path, uint8_t length)
 {
     static const uint8_t pattern[LOOPBACK_DATA_LENGTH] =
         {0xA5U, 0x00U, 0xFFU, 0x12U, 0x34U, 0x56U, 0x78U, 0x9BU};
@@ -210,8 +299,9 @@ static uint8_t Loopback_RunCase(uint8_t throughCanIf, uint8_t length)
     Can_PduType canPdu;
     PduInfoType pdu;
 
-    g_CanLoopbackTestResult.stage = (throughCanIf != 0U) ?
-        LOOPBACK_STAGE_CANIF_TX : LOOPBACK_STAGE_DRIVER_TX;
+    g_CanLoopbackTestResult.txPath = path;
+    g_CanLoopbackTestResult.stage = (path == LOOPBACK_TX_PDUR) ? LOOPBACK_STAGE_PDUR_TX :
+        ((path == LOOPBACK_TX_CANIF) ? LOOPBACK_STAGE_CANIF_TX : LOOPBACK_STAGE_DRIVER_TX);
     g_CanLoopbackTestResult.dlc = length;
     g_CanLoopbackTestResult.caseTxCount = 0U;
     g_CanLoopbackTestResult.caseRxCount = 0U;
@@ -219,7 +309,7 @@ static uint8_t Loopback_RunCase(uint8_t throughCanIf, uint8_t length)
     g_CanLoopbackTestResult.lastRxLength = 0U;
     for (index = 0U; index < LOOPBACK_DATA_LENGTH; index++)
     {
-        Loopback_TxBytes[index] = pattern[index] ^ (uint8_t)(length + throughCanIf * 16U);
+        Loopback_TxBytes[index] = pattern[index] ^ (uint8_t)(length + (uint8_t)path * 16U);
         g_CanLoopbackTestResult.expectedBytes[index] = Loopback_TxBytes[index];
         g_CanLoopbackTestResult.receivedBytes[index] = 0U;
     }
@@ -232,8 +322,29 @@ static uint8_t Loopback_RunCase(uint8_t throughCanIf, uint8_t length)
     canPdu.length = length;
     canPdu.sdu = pdu.SduDataPtr;
     g_CanLoopbackTestResult.frameActive = 1U;
-    if (throughCanIf != 0U)
+    if (path == LOOPBACK_TX_PDUR)
     {
+        /*=========================================================================
+         * PduR Test - COM to CanIf Routing and BUSY Propagation
+         *==========================================================================*/
+        g_CanLoopbackTestResult.transmitResult = PduR_ComTransmit(COM_IPDU_VEHICLE_STATUS, &pdu);
+        if (g_CanLoopbackTestResult.transmitResult != E_OK)
+        {
+            Loopback_Fail(LOOPBACK_ERROR_TRANSMIT);
+            return 0U;
+        }
+        g_CanLoopbackTestResult.busyResult = PduR_ComTransmit(COM_IPDU_VEHICLE_STATUS, &pdu);
+        if (g_CanLoopbackTestResult.busyResult != E_NOT_OK)
+        {
+            Loopback_Fail(LOOPBACK_ERROR_BUSY);
+            return 0U;
+        }
+    }
+    else if (path == LOOPBACK_TX_CANIF)
+    {
+        /*=========================================================================
+         * CanIf Test - Local PDU Mapping and BUSY Propagation
+         *==========================================================================*/
         g_CanLoopbackTestResult.transmitResult = CanIf_Transmit(CANIF_TX_PDU_VEHICLE_STATUS, &pdu);
         if (g_CanLoopbackTestResult.transmitResult != E_OK)
         {
@@ -249,6 +360,9 @@ static uint8_t Loopback_RunCase(uint8_t throughCanIf, uint8_t length)
     }
     else
     {
+        /*=========================================================================
+         * Can Test - Direct Hardware Object Transmission and CAN_BUSY
+         *==========================================================================*/
         g_CanLoopbackTestResult.transmitResult = Can_Write(CanIf_TxPduConfig[0].hth, &canPdu);
         if (g_CanLoopbackTestResult.transmitResult != CAN_OK)
         {
@@ -259,6 +373,18 @@ static uint8_t Loopback_RunCase(uint8_t throughCanIf, uint8_t length)
         if (g_CanLoopbackTestResult.busyResult != CAN_BUSY)
         {
             Loopback_Fail(LOOPBACK_ERROR_BUSY);
+            return 0U;
+        }
+    }
+    /*=========================================================================
+     * Shared Test Checks - Payload Copy, Polling and Exactly-Once Callbacks
+     *==========================================================================*/
+    /* No lower layer may modify the caller's bytes (including Update bits). */
+    for (index = 0U; index < LOOPBACK_DATA_LENGTH; index++)
+    {
+        if (Loopback_TxBytes[index] != g_CanLoopbackTestResult.expectedBytes[index])
+        {
+            Loopback_Fail(LOOPBACK_ERROR_PAYLOAD);
             return 0U;
         }
     }
@@ -299,10 +425,17 @@ static uint8_t Loopback_RunCase(uint8_t throughCanIf, uint8_t length)
     }
     g_CanLoopbackTestResult.frameActive = 0U;
     g_CanLoopbackTestResult.passedCases++;
+    if (path == LOOPBACK_TX_PDUR)
+    {
+        g_CanLoopbackTestResult.pdurPassedCases++;
+    }
     return 1U;
 }
 
-/** Initialize real modules and run both Tx paths for DLC 0..8; preserve final state. */
+/*=========================================================================
+ * Board Test Entry Point
+ *==========================================================================*/
+/** Initialize real modules and run all three Tx paths for DLC 0..8; retain results. */
 int main(void)
 {
     uint8_t path;
@@ -313,6 +446,9 @@ int main(void)
     disable_WDOG();
     init_MCU(); /* If stopped here, inspect the BSP's unbounded SOSC wait. */
     LED_Off(LED_GREEN);
+    /*=========================================================================
+     * CanIf Test - Loopback PDU Configuration
+     *==========================================================================*/
     /* This board test expects one bidirectional VehicleStatus L-PDU binding. */
     if ((CANIF_NUM_TX_PDUS != 1U) || (CANIF_NUM_RX_PDUS != 1U) ||
         (CanIf_TxPduConfig[0].txPduId != CANIF_TX_PDU_VEHICLE_STATUS) ||
@@ -322,6 +458,24 @@ int main(void)
         Loopback_Fail(LOOPBACK_ERROR_CONFIG);
         goto finished;
     }
+    /*=========================================================================
+     * PduR Test - Tx Route Configuration
+     *==========================================================================*/
+    /* Current PduR only implements Tx routing; validate the route under test. */
+    if ((PDUR_NUM_TX_ROUTES != 1U) ||
+        (PduR_TxRouteConfig[0].sourcePduId != COM_IPDU_VEHICLE_STATUS) ||
+        (PduR_TxRouteConfig[0].destPduId != CANIF_TX_PDU_VEHICLE_STATUS) ||
+        (PduR_TxRouteConfig[0].globalPduId != GLOBAL_PDU_VEHICLE_STATUS))
+    {
+        Loopback_Fail(LOOPBACK_ERROR_CONFIG);
+        goto finished;
+    }
+    g_CanLoopbackTestResult.pdurSourcePduId = PduR_TxRouteConfig[0].sourcePduId;
+    g_CanLoopbackTestResult.pdurDestPduId = PduR_TxRouteConfig[0].destPduId;
+    g_CanLoopbackTestResult.pdurGlobalPduId = PduR_TxRouteConfig[0].globalPduId;
+    /*=========================================================================
+     * Can Test - Driver Initialization and Loopback Mode
+     *==========================================================================*/
     g_CanLoopbackTestResult.stage = LOOPBACK_STAGE_DRIVER_INIT;
     g_CanLoopbackTestResult.driverInitResult = Can_Init();
     if (g_CanLoopbackTestResult.driverInitResult != CAN_OK)
@@ -333,6 +487,9 @@ int main(void)
     {
         goto finished;
     }
+    /*=========================================================================
+     * CanIf Test - Module Initialization
+     *==========================================================================*/
     g_CanLoopbackTestResult.stage = LOOPBACK_STAGE_CANIF_INIT;
     g_CanLoopbackTestResult.canIfInitResult = CanIf_Init();
     if (g_CanLoopbackTestResult.canIfInitResult != E_OK)
@@ -340,11 +497,15 @@ int main(void)
         Loopback_Fail(LOOPBACK_ERROR_CANIF_INIT);
         goto finished;
     }
-    for (path = 0U; path < 2U; path++)
+    if (Loopback_CheckPduRRejections() == 0U)
+    {
+        goto finished;
+    }
+    for (path = LOOPBACK_TX_DRIVER; path <= LOOPBACK_TX_PDUR; path++)
     {
         for (length = 0U; length <= LOOPBACK_DATA_LENGTH; length++)
         {
-            if (Loopback_RunCase(path, length) == 0U)
+            if (Loopback_RunCase((Loopback_TxPathType)path, length) == 0U)
             {
                 goto finished;
             }
