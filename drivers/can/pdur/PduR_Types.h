@@ -1,5 +1,5 @@
-#ifndef PDUR_TYPES_H
-#define PDUR_TYPES_H
+#ifndef PDUR_TYPES_H_
+#define PDUR_TYPES_H_
 
 #include "../common/CanStack_Types.h"
 
@@ -17,4 +17,4 @@ typedef struct
     GlobalPduIdType globalPduId;
 } PduR_RxRouteConfigType;
 
-#endif /* PDUR_TYPES_H */
+#endif /* PDUR_TYPES_H_ */

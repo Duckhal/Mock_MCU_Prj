@@ -1,0 +1,15 @@
+Tip: Hãy chọn các chu kỳ I-PDU là bội số của một khoảng thời gian chung, ví dụ 10 ms, rồi gán mỗi I-PDU một offset khác nhau trong khoảng 1–9 ms. Offset có thể hiểu đơn giản là slot thời gian mà I-PDU bắt đầu phase truyền của nó; sau đó I-PDU sẽ tiếp tục due theo đúng period đã cấu hình.
+Ví dụ ta có 3 I-PDU:
+PDU A: Period = 20 ms, Offset = 1 ms
+PDU B: Period = 20 ms, Offset = 3 ms
+PDU C: Period = 30 ms, Offset = 5 ms
+Trong cửa sổ 10 ms, các offset slot là:
+Slot: 1 2 3 4 5 6 7 8 9 ms
+A B C
+Thời điểm due tương ứng:
+PDU A → 1, 21, 41, 61, 81... ms
+PDU B → 3, 23, 43, 63, 83... ms
+PDU C → 5, 35, 65, 95, 125... ms
+Có thể thấy dù A/B có chu kỳ 20 ms và C có chu kỳ 30 ms, tất cả period đều là bội của 10 ms, nên mỗi PDU luôn giữ phase offset riêng của nó: A ở phase 1 ms, B ở phase 3 ms, C ở phase 5 ms. Vì các phase khác nhau nên các PDU không due đúng cùng một thời điểm.
+Các slot 2, 4, 6, 7, 8, 9 ms vẫn còn trống và có thể dùng cho các I-PDU khác.
+Lưu ý: 1–9 ms ở đây là các offset trong cùng một cửa sổ 10 ms, không phải số thứ tự các lần truyền.

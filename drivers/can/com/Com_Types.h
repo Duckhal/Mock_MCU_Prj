@@ -1,5 +1,5 @@
-#ifndef COM_TYPES_H
-#define COM_TYPES_H
+#ifndef COM_TYPES_H_
+#define COM_TYPES_H_
 
 #include <stdint.h>
 #include "../common/CanStack_Types.h"
@@ -43,4 +43,4 @@ typedef struct
     uint8_t maxRetries;
 } Com_IPduConfigType;
 
-#endif /* COM_TYPES_H */
+#endif /* COM_TYPES_H_ */

@@ -1,5 +1,5 @@
-#ifndef CAN_TYPES_H
-#define CAN_TYPES_H
+#ifndef CAN_TYPES_H_
+#define CAN_TYPES_H_
 
 #include <stdint.h>
 #include "../common/CanStack_Types.h"
@@ -51,4 +51,4 @@ typedef struct
     uint8_t hwObjectIndex;
 } Can_HardwareObjectConfigType;
 
-#endif /* CAN_TYPES_H */
+#endif /* CAN_TYPES_H_ */

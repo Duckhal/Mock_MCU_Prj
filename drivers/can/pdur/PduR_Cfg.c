@@ -18,7 +18,7 @@ PduR_RxRouteConfig[PDUR_NUM_RX_ROUTES] =
 {
     {
         .sourcePduId = CANIF_RX_PDU_VEHICLE_STATUS,
-        .destPduId = COM_IPDU_VEHICLE_STATUS,
+        .destPduId = COM_IPDU_RX_VEHICLE_STATUS,
         .globalPduId = GLOBAL_PDU_VEHICLE_STATUS
     }
 };

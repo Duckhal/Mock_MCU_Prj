@@ -1,5 +1,5 @@
-#ifndef CANSTACK_TYPES_H
-#define CANSTACK_TYPES_H
+#ifndef CANSTACK_TYPES_H_
+#define CANSTACK_TYPES_H_
 
 #include <stdint.h>
 
@@ -17,4 +17,4 @@ typedef struct
     PduLengthType SduLength;
 } PduInfoType;
 
-#endif /* CANSTACK_TYPES_H */
+#endif /* CANSTACK_TYPES_H_ */

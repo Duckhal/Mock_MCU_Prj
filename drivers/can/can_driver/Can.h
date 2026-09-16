@@ -1,5 +1,5 @@
-#ifndef CAN_H
-#define CAN_H
+#ifndef CAN_H_
+#define CAN_H_
 
 #include "Can_Types.h"
 #include "Can_Cfg.h"
@@ -29,10 +29,7 @@ Can_ReturnType Can_Init(void);
  * @note Input pointers are not retained. CAN_OK does not mean physical Tx done.
  *       CanIf must provide CanIf_TxConfirmation(PduIdType TxPduId).
  */
-Can_ReturnType Can_Write(
-    Can_HwHandleType Hth,
-    const Can_PduType *PduInfo
-);
+Can_ReturnType Can_Write(Can_HwHandleType Hth, const Can_PduType *PduInfo);
 
 /**
  * @brief Poll CAN0 Tx completion and confirm each accepted request once.
@@ -56,4 +53,4 @@ void Can_MainFunction_Write(void);
  */
 void Can_MainFunction_Read(void);
 
-#endif /* CAN_H */
+#endif /* CAN_H_ */

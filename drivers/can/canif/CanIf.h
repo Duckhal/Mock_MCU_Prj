@@ -1,5 +1,5 @@
-#ifndef CANIF_H
-#define CANIF_H
+#ifndef CANIF_H_
+#define CANIF_H_
 
 #include "CanIf_Types.h"
 
@@ -15,10 +15,7 @@ Std_ReturnType CanIf_Init(void);
  * @param PduInfoPtr Payload pointer and length; input pointers are not retained.
  * @return E_OK if Can_Write accepts the request; E_NOT_OK otherwise.
  */
-Std_ReturnType CanIf_Transmit(
-    PduIdType TxPduId,
-    const PduInfoType *PduInfoPtr
-);
+Std_ReturnType CanIf_Transmit(PduIdType TxPduId, const PduInfoType *PduInfoPtr);
 
 /**
  * @brief Receive driver completion and forward the notification to PduR.
@@ -31,9 +28,6 @@ void CanIf_TxConfirmation(PduIdType TxPduId);
  * @param Hrh Receive hardware object handle.
  * @param RxPdu Received frame; its payload is valid only during this callback.
  */
-void CanIf_RxIndication(
-    Can_HwHandleType Hrh,
-    const Can_RxPduType *RxPdu
-);
+void CanIf_RxIndication(Can_HwHandleType Hrh, const Can_RxPduType *RxPdu);
 
 #endif /* CANIF_H */

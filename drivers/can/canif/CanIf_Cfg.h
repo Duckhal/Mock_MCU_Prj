@@ -1,5 +1,5 @@
-#ifndef CANIF_CFG_H
-#define CANIF_CFG_H
+#ifndef CANIF_CFG_H_
+#define CANIF_CFG_H_
 
 #include "CanIf_Types.h"
 
@@ -24,4 +24,4 @@
 extern const CanIf_TxPduConfigType CanIf_TxPduConfig[CANIF_NUM_TX_PDUS];
 extern const CanIf_RxPduConfigType CanIf_RxPduConfig[CANIF_NUM_RX_PDUS];
 
-#endif /* CANIF_CFG_H */
+#endif /* CANIF_CFG_H_ */

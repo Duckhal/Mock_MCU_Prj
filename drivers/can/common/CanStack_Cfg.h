@@ -1,5 +1,5 @@
-#ifndef CANSTACK_CFG_H
-#define CANSTACK_CFG_H
+#ifndef CANSTACK_CFG_H_
+#define CANSTACK_CFG_H_
 
 #include "CanStack_Types.h"
 
@@ -9,4 +9,4 @@
 #define GLOBAL_PDU_ENGINE_STATUS    ((GlobalPduIdType)0x0011U)
 #define GLOBAL_PDU_CLIMATE_STATUS   ((GlobalPduIdType)0x0012U)
 
-#endif /* CANSTACK_CFG_H */
+#endif /* CANSTACK_CFG_H_ */

@@ -7,6 +7,7 @@
 #include "../drivers/can/pdur/PduR.h"
 #include "../drivers/can/pdur/PduR_Cfg.h"
 #include "../drivers/can/com/Com_Cfg.h"
+#include "../drivers/can/com/Com.h"
 #include "../drivers/can/common/CanStack_Cfg.h"
 #include <stddef.h>
 
@@ -14,9 +15,8 @@
  * Use Debug_FLASH and reset the MCU to run again. No CAN peer is required.
  * Break at the final main loop and inspect g_CanLoopbackTestResult.
  * This tests internal loopback, not CAN wiring or transceiver operation.
- * PduR_ComTransmit uses the real PduR module. Its Rx/confirmation APIs are absent;
- * captures below observe the CanIf boundary, not PduR Rx/confirmation routing.
- * Remove captures when production PduR_CanIf callbacks are implemented.
+ * Real PduR routes Tx, Rx and confirmation to COM. Debug snapshots below
+ * observe both PduR and COM after each polling step.
  */
 /*=========================================================================
  * Shared Test Configuration and Debug Results
@@ -45,7 +45,10 @@ typedef enum
     LOOPBACK_STAGE_CANIF_TX,
     LOOPBACK_STAGE_DONE,
     LOOPBACK_STAGE_PDUR_VALIDATE,
-    LOOPBACK_STAGE_PDUR_TX
+    LOOPBACK_STAGE_PDUR_TX,
+    LOOPBACK_STAGE_COM_INIT,
+    LOOPBACK_STAGE_COM_TX,
+    LOOPBACK_STAGE_COM_RX
 } Loopback_StageType;
 
 typedef enum
@@ -70,7 +73,11 @@ typedef enum
     LOOPBACK_ERROR_RX_CALLBACK,
     LOOPBACK_ERROR_PAYLOAD,
     LOOPBACK_ERROR_TIMEOUT,
-    LOOPBACK_ERROR_PDUR_REJECTION
+    LOOPBACK_ERROR_PDUR_REJECTION,
+    LOOPBACK_ERROR_COM_INIT,
+    LOOPBACK_ERROR_COM_SIGNAL,
+    LOOPBACK_ERROR_COM_SCHEDULE,
+    LOOPBACK_ERROR_COM_RECEIVE
 } Loopback_ErrorType;
 
 typedef struct
@@ -98,6 +105,16 @@ typedef struct
     PduLengthType lastRxLength;
     Can_ReturnType driverInitResult;
     Std_ReturnType canIfInitResult;
+    Std_ReturnType comInitResult;
+    uint32_t comTxConfirmations;
+    uint32_t comRxIndications;
+    uint32_t comDrops;
+    uint32_t comReceivedSpeed;
+    uint32_t comReceivedGear;
+    uint32_t comReceivedAlive;
+    uint8_t comReceivedSpeedU;
+    uint8_t comReceivedGearU;
+    uint8_t comReceivedAliveU;
     uint32_t transmitResult;
     uint32_t busyResult;
     uint8_t expectedBytes[LOOPBACK_DATA_LENGTH];
@@ -185,52 +202,35 @@ static uint8_t Loopback_EnableMode(void)
 }
 
 /*=========================================================================
- * CanIf Test - TxConfirmation and RxIndication Capture
+ * CanIf / PduR Test - Observe Real Routed Callbacks
  *==========================================================================*/
-/** Capture the real CanIf confirmation and check the local PDU ID exactly once. */
-void PduR_CanIfTxConfirmation(PduIdType TxPduId)
-{
-    g_CanLoopbackTestResult.lastTxPduId = TxPduId;
-    g_CanLoopbackTestResult.txConfirmations++;
-    g_CanLoopbackTestResult.caseTxCount++;
-    if ((g_CanLoopbackTestResult.frameActive == 0U) ||
-        (TxPduId != CANIF_TX_PDU_VEHICLE_STATUS) ||
-        (g_CanLoopbackTestResult.caseTxCount != 1U))
-    {
-        Loopback_Fail(LOOPBACK_ERROR_TX_CALLBACK);
-    }
-}
-
-/** Copy the borrowed CanIf Rx payload now and compare it with the sent snapshot. */
-void PduR_CanIfRxIndication(PduIdType RxPduId, const PduInfoType *PduInfoPtr)
+/** Compare PduR callback snapshots with the active frame after polling. */
+static void Loopback_ObserveCallbacks(uint32_t txBefore, uint32_t rxBefore)
 {
     uint8_t index;
-
-    g_CanLoopbackTestResult.lastRxPduId = RxPduId;
-    g_CanLoopbackTestResult.rxIndications++;
-    g_CanLoopbackTestResult.caseRxCount++;
-    if ((g_CanLoopbackTestResult.frameActive == 0U) ||
-        (RxPduId != CANIF_RX_PDU_VEHICLE_STATUS) ||
-        (g_CanLoopbackTestResult.caseRxCount != 1U) ||
-        (PduInfoPtr == NULL))
+    uint32_t txCount = PduR_TxConfirmationCount - txBefore;
+    uint32_t rxCount = PduR_RxIndicationCount - rxBefore;
+    g_CanLoopbackTestResult.caseTxCount = txCount;
+    g_CanLoopbackTestResult.caseRxCount = rxCount;
+    g_CanLoopbackTestResult.txConfirmations = PduR_TxConfirmationCount;
+    g_CanLoopbackTestResult.rxIndications = PduR_RxIndicationCount;
+    g_CanLoopbackTestResult.lastTxPduId = PduR_LastTxPduId;
+    g_CanLoopbackTestResult.lastRxPduId = PduR_LastRxPduId;
+    g_CanLoopbackTestResult.lastRxLength = PduR_LastRxLength;
+    if ((txCount > 1U) || ((txCount == 1U) &&
+        (PduR_LastTxPduId != CANIF_TX_PDU_VEHICLE_STATUS)))
+    { Loopback_Fail(LOOPBACK_ERROR_TX_CALLBACK); }
+    if ((rxCount > 1U) || ((rxCount == 1U) &&
+        ((PduR_LastRxPduId != CANIF_RX_PDU_VEHICLE_STATUS) ||
+         (PduR_LastRxLength != g_CanLoopbackTestResult.dlc))))
+    { Loopback_Fail(LOOPBACK_ERROR_RX_CALLBACK); }
+    if (rxCount == 1U)
     {
-        Loopback_Fail(LOOPBACK_ERROR_RX_CALLBACK);
-        return;
-    }
-    g_CanLoopbackTestResult.lastRxLength = PduInfoPtr->SduLength;
-    if ((PduInfoPtr->SduLength != g_CanLoopbackTestResult.dlc) ||
-        (PduInfoPtr->SduLength > LOOPBACK_DATA_LENGTH) ||
-        ((PduInfoPtr->SduLength > 0U) && (PduInfoPtr->SduDataPtr == NULL)))
-    {
-        Loopback_Fail(LOOPBACK_ERROR_RX_CALLBACK);
-        return;
-    }
-    for (index = 0U; index < PduInfoPtr->SduLength; index++)
-    {
-        g_CanLoopbackTestResult.receivedBytes[index] = PduInfoPtr->SduDataPtr[index];
-        if (PduInfoPtr->SduDataPtr[index] != g_CanLoopbackTestResult.expectedBytes[index])
+        for (index = 0U; index < PduR_LastRxLength; index++)
         {
-            Loopback_Fail(LOOPBACK_ERROR_PAYLOAD);
+            g_CanLoopbackTestResult.receivedBytes[index] = PduR_LastRxBytes[index];
+            if (PduR_LastRxBytes[index] != g_CanLoopbackTestResult.expectedBytes[index])
+            { Loopback_Fail(LOOPBACK_ERROR_PAYLOAD); }
         }
     }
 }
@@ -296,6 +296,8 @@ static uint8_t Loopback_RunCase(Loopback_TxPathType path, uint8_t length)
         {0xA5U, 0x00U, 0xFFU, 0x12U, 0x34U, 0x56U, 0x78U, 0x9BU};
     uint8_t index;
     uint32_t poll;
+    uint32_t txBefore = PduR_TxConfirmationCount;
+    uint32_t rxBefore = PduR_RxIndicationCount;
     Can_PduType canPdu;
     PduInfoType pdu;
 
@@ -397,6 +399,7 @@ static uint8_t Loopback_RunCase(Loopback_TxPathType path, uint8_t length)
     {
         Can_MainFunction_Write();
         Can_MainFunction_Read();
+        Loopback_ObserveCallbacks(txBefore, rxBefore);
         g_CanLoopbackTestResult.pollIterations = poll + 1U;
         if (g_CanLoopbackTestResult.status == LOOPBACK_FAIL)
         {
@@ -418,6 +421,7 @@ static uint8_t Loopback_RunCase(Loopback_TxPathType path, uint8_t length)
     {
         Can_MainFunction_Write();
         Can_MainFunction_Read();
+        Loopback_ObserveCallbacks(txBefore, rxBefore);
         if (g_CanLoopbackTestResult.status == LOOPBACK_FAIL)
         {
             return 0U;
@@ -433,9 +437,98 @@ static uint8_t Loopback_RunCase(Loopback_TxPathType path, uint8_t length)
 }
 
 /*=========================================================================
+ * COM Test - Signal Packing, Periodic Scheduling, Retry and Full Rx Route
+ *==========================================================================*/
+/** Poll both CAN functions until one COM Tx completion and Rx I-PDU arrive. */
+static uint8_t Loopback_WaitComFrame(uint32_t txTarget, uint32_t rxTarget)
+{
+    uint32_t poll;
+    for (poll = 0U; poll < LOOPBACK_POLL_LIMIT; poll++)
+    {
+        Can_MainFunction_Write();
+        Can_MainFunction_Read();
+        if ((Com_TxConfirmationCount == txTarget) &&
+            (Com_RxIndicationCount == rxTarget))
+        { return 1U; }
+        if ((Com_TxConfirmationCount > txTarget) ||
+            (Com_RxIndicationCount > rxTarget))
+        { break; }
+    }
+    Loopback_Fail(LOOPBACK_ERROR_COM_RECEIVE);
+    return 0U;
+}
+
+/** Prove t=1 acceptance, t=11 BUSY and t=12 latest-value retry via COM. */
+static uint8_t Loopback_RunComTest(void)
+{
+    uint32_t txBefore = Com_TxConfirmationCount;
+    uint32_t rxBefore = Com_RxIndicationCount;
+    uint32_t speed;
+    uint32_t gear;
+    uint32_t alive;
+    uint8_t speedU;
+    uint8_t gearU;
+    uint8_t aliveU;
+    uint8_t tick;
+
+    g_CanLoopbackTestResult.stage = LOOPBACK_STAGE_COM_TX;
+    if ((Com_SendSignal(COM_SIGNAL_VEHICLE_SPEED, 100U) != E_OK) ||
+        (Com_SendSignal(COM_SIGNAL_GEAR, 3U) != E_OK) ||
+        (Com_SendSignal(COM_SIGNAL_ALIVE_COUNTER, 5U) != E_OK) ||
+        (Com_SendSignal(COM_SIGNAL_GEAR, 128U) != E_NOT_OK))
+    { Loopback_Fail(LOOPBACK_ERROR_COM_SIGNAL); return 0U; }
+
+    Com_MainFunctionTx(); /* t=1: period 10, offset 1. */
+    if ((CAN0->RAMn[33U] != (CanIf_TxPduConfig[0].canId << 18U)) ||
+        (CAN0->RAMn[34U] != 0xC900070BU))
+    { Loopback_Fail(LOOPBACK_ERROR_COM_SCHEDULE); return 0U; }
+    for (tick = 0U; tick < 9U; tick++)
+    { Com_MainFunctionTx(); } /* t=2..10: no nominal due. */
+    Com_MainFunctionTx(); /* t=11: nominal due, MB8 still reserved => pending. */
+    if ((Com_TxConfirmationCount != txBefore) || (Com_TxDropCount != 0U))
+    { Loopback_Fail(LOOPBACK_ERROR_COM_SCHEDULE); return 0U; }
+
+    g_CanLoopbackTestResult.stage = LOOPBACK_STAGE_COM_RX;
+    if (Loopback_WaitComFrame(txBefore + 1U, rxBefore + 1U) == 0U)
+    { return 0U; }
+    if ((Com_ReceiveSignal(COM_SIGNAL_RX_VEHICLE_SPEED, &speed, &speedU) != E_OK) ||
+        (speed != 100U) || (speedU != 1U))
+    { Loopback_Fail(LOOPBACK_ERROR_COM_RECEIVE); return 0U; }
+    g_CanLoopbackTestResult.comReceivedSpeed = speed;
+    g_CanLoopbackTestResult.comReceivedSpeedU = speedU;
+
+    if (Com_SendSignal(COM_SIGNAL_VEHICLE_SPEED, 120U) != E_OK)
+    { Loopback_Fail(LOOPBACK_ERROR_COM_SIGNAL); return 0U; }
+    g_CanLoopbackTestResult.stage = LOOPBACK_STAGE_COM_TX;
+    Com_MainFunctionTx(); /* t=12: pending retry uses latest value. */
+    if (Com_TxDropCount != 0U)
+    { Loopback_Fail(LOOPBACK_ERROR_COM_SCHEDULE); return 0U; }
+    g_CanLoopbackTestResult.stage = LOOPBACK_STAGE_COM_RX;
+    if (Loopback_WaitComFrame(txBefore + 2U, rxBefore + 2U) == 0U)
+    { return 0U; }
+    if ((Com_ReceiveSignal(COM_SIGNAL_RX_VEHICLE_SPEED, &speed, &speedU) != E_OK) ||
+        (Com_ReceiveSignal(COM_SIGNAL_RX_GEAR, &gear, &gearU) != E_OK) ||
+        (Com_ReceiveSignal(COM_SIGNAL_RX_ALIVE_COUNTER, &alive, &aliveU) != E_OK) ||
+        (speed != 120U) || (speedU != 1U) ||
+        (gear != 3U) || (gearU != 0U) ||
+        (alive != 5U) || (aliveU != 0U))
+    { Loopback_Fail(LOOPBACK_ERROR_COM_RECEIVE); return 0U; }
+    g_CanLoopbackTestResult.comReceivedSpeed = speed;
+    g_CanLoopbackTestResult.comReceivedSpeedU = speedU;
+    g_CanLoopbackTestResult.comReceivedGear = gear;
+    g_CanLoopbackTestResult.comReceivedGearU = gearU;
+    g_CanLoopbackTestResult.comReceivedAlive = alive;
+    g_CanLoopbackTestResult.comReceivedAliveU = aliveU;
+    g_CanLoopbackTestResult.comTxConfirmations = Com_TxConfirmationCount;
+    g_CanLoopbackTestResult.comRxIndications = Com_RxIndicationCount;
+    g_CanLoopbackTestResult.comDrops = Com_TxDropCount;
+    return 1U;
+}
+
+/*=========================================================================
  * Board Test Entry Point
  *==========================================================================*/
-/** Initialize real modules and run all three Tx paths for DLC 0..8; retain results. */
+/** Run all three raw Tx paths and the full COM Signal loopback test. */
 int main(void)
 {
     uint8_t path;
@@ -461,11 +554,15 @@ int main(void)
     /*=========================================================================
      * PduR Test - Tx Route Configuration
      *==========================================================================*/
-    /* Current PduR only implements Tx routing; validate the route under test. */
+    /* Verify both directions and one logical GlobalPduId across the route. */
     if ((PDUR_NUM_TX_ROUTES != 1U) ||
+        (PDUR_NUM_RX_ROUTES != 1U) ||
         (PduR_TxRouteConfig[0].sourcePduId != COM_IPDU_VEHICLE_STATUS) ||
         (PduR_TxRouteConfig[0].destPduId != CANIF_TX_PDU_VEHICLE_STATUS) ||
-        (PduR_TxRouteConfig[0].globalPduId != GLOBAL_PDU_VEHICLE_STATUS))
+        (PduR_TxRouteConfig[0].globalPduId != GLOBAL_PDU_VEHICLE_STATUS) ||
+        (PduR_RxRouteConfig[0].sourcePduId != CANIF_RX_PDU_VEHICLE_STATUS) ||
+        (PduR_RxRouteConfig[0].destPduId != COM_IPDU_RX_VEHICLE_STATUS) ||
+        (PduR_RxRouteConfig[0].globalPduId != GLOBAL_PDU_VEHICLE_STATUS))
     {
         Loopback_Fail(LOOPBACK_ERROR_CONFIG);
         goto finished;
@@ -497,6 +594,13 @@ int main(void)
         Loopback_Fail(LOOPBACK_ERROR_CANIF_INIT);
         goto finished;
     }
+    /*=========================================================================
+     * COM Test - Module Initialization
+     *==========================================================================*/
+    g_CanLoopbackTestResult.stage = LOOPBACK_STAGE_COM_INIT;
+    g_CanLoopbackTestResult.comInitResult = Com_Init();
+    if (g_CanLoopbackTestResult.comInitResult != E_OK)
+    { Loopback_Fail(LOOPBACK_ERROR_COM_INIT); goto finished; }
     if (Loopback_CheckPduRRejections() == 0U)
     {
         goto finished;
@@ -511,6 +615,8 @@ int main(void)
             }
         }
     }
+    if (Loopback_RunComTest() == 0U)
+    { goto finished; }
     Loopback_Snapshot();
     g_CanLoopbackTestResult.stage = LOOPBACK_STAGE_DONE;
     g_CanLoopbackTestResult.status = LOOPBACK_PASS;
