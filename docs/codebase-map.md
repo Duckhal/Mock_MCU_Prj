@@ -1,6 +1,6 @@
 # Codebase Map
 
-Snapshot: 2026-09-15, sau triển khai driver CAN0 và CanIf. Quy tắc tương tác và mục tiêu: [context.md](context.md). Map này phản ánh source và kiểm chứng host/ARM object; không chứng minh firmware chạy được trên board.
+Snapshot: 2026-09-17, sau TC-003 hai board và UART. Quy tắc tương tác và mục tiêu: [context.md](context.md). Map này phản ánh source và kiểm chứng host/ARM; không chứng minh firmware chạy được trên board.
 
 ## Tổng quan
 
@@ -44,7 +44,8 @@ docs/implement không tồn tại. Tests CAN0 mới nằm tại tests/can_driver
 
 | Module | File/ranh giới còn tồn tại | Phụ thuộc và trạng thái |
 |---|---|---|
-| Entrypoint | [src/main.c](../src/main.c) | 27 loopback cases Can_Write/CanIf_Transmit/PduR_ComTransmit DLC0..8; 4 invalid PduR requests; COM Signal Tx/Rx test qua scheduler, retry và Update Bit. Volatile g_CanLoopbackTestResult và PduR/COM counters cho debugger; green LED báo PASS. |
+| Entrypoint | [src/main.c](../src/main.c) | `BOARD_MODE=0` giữ `Loopback_RunAll()` (27 case + COM); `1` phát TC-003 từ SW2 qua CanIf; `2` nhận qua PduR snapshot và điều khiển RGB LED. Mode 1/2 log bằng UART LPUART1. |
+| TC-003 host tests | [test_tx.c](../tests/board_demo/test_tx.c), [test_rx.c](../tests/board_demo/test_rx.c), [README](../tests/board_demo/README.md) | Debounce, payload CA/command/sequence, Rx validation/duplicate, LED mapping và UART log pass; ARM FLASH build ba mode pass. |
 | PduR Tx/Rx | [PduR.c](../drivers/can/pdur/PduR.c), [PduR_Cfg.c](../drivers/can/pdur/PduR_Cfg.c) | PduR_ComTransmit route COM→CanIf; CanIf callbacks route confirmation và Rx về COM. Config VehicleStatus global0x0010; debug counters và Rx byte snapshot phục vụ main. |
 | COM Part 1 | [Com.c](../drivers/can/com/Com.c), [Com.h](../drivers/can/com/Com.h), [Com_Cfg.c](../drivers/can/com/Com_Cfg.c) | Validate hierarchy/slot/timing; pack Signal + Update Bit, scheduler 1 ms với bounded retry/latest value, receive decode. Tx và Rx I-PDU có group riêng, cùng logical GlobalPduId. |
 | COM host tests | [test_com.c](../tests/com/test_com.c), [test_com_config.c](../tests/com/test_com_config.c) | Deterministic pack/Rx/offset/retry/drop tests và 12 malformed config fixtures đều pass. |
@@ -69,7 +70,7 @@ docs/implement không tồn tại. Tests CAN0 mới nằm tại tests/can_driver
 
 ## Luồng thực tế và luồng mục tiêu
 
-Entrypoint còn trên đĩa:
+Entrypoint mode loopback:
 
 ~~~text
 src/main.c
@@ -80,6 +81,8 @@ src/main.c
   -> Com_SendSignal/Com_MainFunctionTx -> PduR/CanIf/CanDrv -> real PduR callbacks -> Com_ReceiveSignal
   -> PASS/FAIL debugger result -> vòng lặp vô hạn
 ~~~
+
+Mode vật lý `BOARD_MODE=1/2`: `SW2 -> CanIf_Transmit(0x321,DLC3) -> CAN0 bus -> CanIf Rx -> PduR snapshot -> RGB LED`, cùng LPUART1 log ở hai board. COM không tham gia đường 3-byte TC-003; mode 0 vẫn kiểm thử COM 8-byte.
 
 Reference can_task độc lập:
 
@@ -107,7 +110,7 @@ COM sở hữu packing/timing; PduR sở hữu routing; CanIf sở hữu CAN ID 
 - Debug_FLASH source entries: Project_Settings (loại Linker_Files và Debugger), bsp, drivers, include, middlewares, src.
 - Release_FLASH, Debug_RAM, Release_RAM: Project_Settings với cùng exclusions, include, src. Chưa đồng nhất source set với Debug_FLASH.
 - can_task và app không nằm trong source entries của cả bốn cấu hình.
-- Entrypoint firmware là src/main.c. can_task/test/main.c không phải main đang build và hiện bị disabled bằng #if 0.
+- Entrypoint firmware là src/main.c với ba mode biên dịch; can_task/test/main.c chỉ là bài tham khảo disabled bằng #if 0.
 - Main không còn tham chiếu header loopback đã xóa. Generated Debug_FLASH makefiles vẫn trỏ tới các CAN folders cũ; regenerate trong IDE khi build Debug_FLASH.
 - Khi được yêu cầu tích hợp/build: sửa entrypoint/source entries trong project metadata và regenerate bằng S32DS. Không dùng generated makefiles/ELF cũ làm nguồn sự thật.
 
@@ -137,3 +140,5 @@ COM sở hữu packing/timing; PduR sở hữu routing; CanIf sở hữu CAN ID 
 Main.c có comment banners Can Test/CanIf Test/PduR Test/COM Test cho init, route, Tx/Rx và shared checks.
 
 Host simulation dùng modules thật/MMIO transformer pass 27 case DLC0..8, 4 PduR rejections và COM scheduler/Signal Rx test. COM host tests pass pack/Rx/retry/drop cùng 12 malformed config fixtures. ARM FLASH ELF `build/com/Com_full_loopback.elf` compile/link strict không còn undefined symbols; logs `build/com/build.log`, `build/com/main_host.log`. Debugger PASS=2/FAIL=3; COM speed cuối 120 với U1, gear3/alive5 với U0, Com_TxDropCount=0. Chưa flash/test board; internal loopback không kiểm tra dây/transceiver. Main gọi Com_MainFunctionTx liên tiếp như tick logic; muốn kiểm định timing thật cần timer 1 ms và đo trên board. Reset để chạy lại.
+
+TC-003 mới: ARM FLASH build strict cả `BOARD_MODE=0/1/2` ra `build/board_demo/{0,1,2}/board_mode_{0,1,2}.elf`; host tests Tx/Rx pass. Hai mode vật lý dùng CAN ID0x321, DLC3, SW2/PTC12, RGB LED, UART 115200 PTC7 TX. Chưa thử bus vật lý hoặc terminal trên board.

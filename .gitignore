@@ -12,7 +12,8 @@ build/
 .metadata/
 .settings/language.settings.xml
 *.launch
-tests/
+tests/*
+!tests/board_demo/
 
 # Temporary files
 *.tmp
