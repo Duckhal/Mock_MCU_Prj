@@ -1,40 +1,37 @@
-# Two-board TC-003 LED test
+﻿# Two-board COM LED application
 
-`src/main.c` has one compile-time selector:
+`src/main.c` is the application entry point. It contains no board-test mode or
+loopback test. Flash the same firmware on both S32K144 boards. Both start in
+Rx with all LEDs off. SW2/PTC12 changes the role between Rx and Tx. In Tx,
+the red LED stays on and each SW3/PTC13 press updates the COM LED command
+through 0 (off), 1 (green), 2 (blue), 3 (green and blue). In Rx, the board
+waits for a valid COM indication and applies the received command to its LEDs.
+Both switches are active-low with a 20 ms debounce.
 
-| `BOARD_MODE` | Image | Behavior |
-|---:|---|---|
-| `0` | Loopback | Calls `CanLoopbackTest_Run()` from `src/can_loopback_test.c` for the 27 CanDrv/CanIf/PduR cases and COM test. |
-| `1` | Board A, Tx | SW2/PTC12 cycles blue, red, green, off and sends one command per debounced press. |
-| `2` | Board B, Rx | Applies validated commands to the RGB LED. |
+The 1 ms application loop calls `Can_MainFunction_Write()`, then
+`Can_MainFunction_Read()`, then `Com_MainFunctionTx()` while in Tx. COM sends
+the configured I-PDU periodically (10 ms period, 1 ms initial offset), so a
+SW3 press updates the next scheduled transmission; it does not send one frame
+immediately. No COM Tx scheduling runs in Rx. An already accepted CAN request
+may finish after switching to Rx.
 
-The current source default is `BOARD_MODE=2` (Rx) when no build symbol is set.
-In S32 Design Studio, create two build configurations from Debug_FLASH. Add
-`BOARD_MODE=1` to the Tx configuration's C compiler defined symbols and
-`BOARD_MODE=2` to the Rx configuration. Rebuild each configuration so the IDE
-regenerates the source list including `src/can_loopback_test.c`, then flash the
-matching image to each board.
-The prebuilt standalone validation images are
-`build/board_demo/1/board_mode_1.elf` and
-`build/board_demo/2/board_mode_2.elf` when that build output exists locally.
+The production stack uses CAN0 at 500 kbit/s, standard CAN ID `0x100`, DLC 8.
+The application uses the existing COM Gear signal slot for the LED command.
+With the current COM configuration the encoded command is in payload byte 2:
+`(command << 1) | update_bit`. The Update Bit is set when the command changes
+and cleared once the lower layer accepts that transmission. Bytes 0, 1 and
+3 through 7 are zero when other VehicleStatus signals stay at their defaults.
+The logical GlobalPduId `0x0010` is selected by the static PduR/CanIf route;
+it is not a payload byte. A peer board must agree on this COM packing.
 
-Both images use CAN0 at 500 kbit/s, standard ID `0x321`, DLC 3. The wire
-payload is `CA command sequence`; commands `01`, `02`, `03`, `00` mean blue,
-red, green, off. This preserves the TC-003 payload behavior while using the
-current CanIf CAN ID (`0x321` instead of the old reference driver's `0x123`).
-The three-byte test uses CanIf directly; the current COM VehicleStatus I-PDU
-is eight bytes. PduR's synchronous Rx snapshot supplies the test receiver.
-No internal CAN loopback is enabled in modes 1 and 2.
+Connect the boards' CAN transceivers on CAN_H/CAN_L with common ground and
+appropriate termination. The BSP uses CAN0 on PTE4/PTE5 and wakes its
+transceiver. For each PC log, connect a 3.3 V USB-UART adapter's RX to PTC7
+(LPUART1_TX) and its ground to board ground. Use 115200 baud, 8N1. UART prints
+mode and logical LED commands; it does not print the raw CAN frame. Debugger
+variables `g_AppStatus`, `g_AppModeTx`, `g_AppProcessedTicks`, and the app
+counters show application state.
 
-Connect the two boards' CAN transceivers on CAN_H/CAN_L with common ground and
-appropriate bus termination. The existing BSP sets CAN0 on PTE4/PTE5 and
-wakes the transceiver. For each board's PC log, connect an appropriate 3.3 V
-USB-UART adapter's RX to PTC7 (LPUART1_TX) and its ground to board ground.
-Use a serial terminal at 115200 baud, 8N1. PTC6 is configured as LPUART1_RX,
-but this test does not interpret commands from the PC.
-
-The Tx terminal prints `TX CA 01 01`, `TX ACCEPTED`, then `TX DONE`. The Rx
-terminal prints the received bytes such as `RX CA 01 01`. A missing ACK can
-produce `TX TIMEOUT`. `g_BoardDemoResult` exposes counters and last payload
-in the debugger. Host tests in this directory cover debounce, frame format,
-validation, duplicates and LED mapping; they cannot prove physical bus wiring.
+Host tests in this directory cover button behavior, COM Tx/Rx packing and
+production CanIf ID. `tests/com_stack/test_main_scheduler.c` covers tick
+ordering. These tests do not establish physical bus behavior or timing jitter.

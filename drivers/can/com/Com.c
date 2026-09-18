@@ -284,6 +284,12 @@ Std_ReturnType Com_ReceiveSignal(PduIdType SignalId, void *SignalDataPtr)
     return E_OK;
 }
 
+/** Let the application detect a new Rx I-PDU without exposing COM buffers. */
+uint32_t Com_GetRxIndicationCount(void)
+{
+    return Com_RxIndicationCount;
+}
+
 /** Decrement nominal timers, retry pending frames once and preserve U on drop. */
 void Com_MainFunctionTx(void)
 {
