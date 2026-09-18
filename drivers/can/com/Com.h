@@ -36,11 +36,11 @@ extern volatile uint32_t Com_TxDropCount;
 /** Validate COM configuration and initialize its buffers and scheduler. */
 Std_ReturnType Com_Init(void);
 
-/** Store one Tx Signal and set its Update Bit without transmitting. */
-Std_ReturnType Com_SendSignal(PduIdType SignalId, uint32_t Value);
+/** Read a caller-owned uint32_t, store the Signal and set U without transmitting. */
+Std_ReturnType Com_SendSignal(PduIdType SignalId, const void *SignalDataPtr);
 
-/** Read one Rx Signal value and the Update Bit from its last received frame. */
-Std_ReturnType Com_ReceiveSignal(PduIdType SignalId, uint32_t *Value, uint8_t *Updated);
+/** Write the latest Rx value to a caller-owned uint32_t; U remains internal. */
+Std_ReturnType Com_ReceiveSignal(PduIdType SignalId, void *SignalDataPtr);
 
 /** Run the non-blocking Tx scheduler once per 1 ms. */
 void Com_MainFunctionTx(void);

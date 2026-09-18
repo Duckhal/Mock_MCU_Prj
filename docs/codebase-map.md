@@ -44,7 +44,7 @@ docs/implement không tồn tại. Tests CAN0 mới nằm tại tests/can_driver
 
 | Module | File/ranh giới còn tồn tại | Phụ thuộc và trạng thái |
 |---|---|---|
-| Entrypoint | [src/main.c](../src/main.c) | `BOARD_MODE=0` gọi `CanLoopbackTest_Run()`; `1` phát TC-003 từ SW2 qua CanIf; `2` nhận qua PduR snapshot và điều khiển RGB LED. Mode 1/2 log bằng UART LPUART1. |
+| Entrypoint | [src/main.c](../src/main.c) | Mặc định `BOARD_MODE=3`: SysTick 1 kHz, main gọi Can Write→Read→COM cho từng tick; `0` gọi loopback; `1/2` là hai image TC-003 cũ. Status/backlog của mode 3 có biến debugger. |
 | Loopback board test | [can_loopback_test.c](../src/can_loopback_test.c), [header](../src/can_loopback_test.h) | 27 CanDrv/CanIf/PduR cases + COM test, giữ debugger `g_CanLoopbackTestResult`. Main chỉ dispatch mode 0. |
 | TC-003 host tests | [test_tx.c](../tests/board_demo/test_tx.c), [test_rx.c](../tests/board_demo/test_rx.c), [README](../tests/board_demo/README.md) | Debounce, payload CA/command/sequence, Rx validation/duplicate, LED mapping và UART log pass; ARM FLASH build ba mode pass. |
 | PduR Tx/Rx | [PduR.c](../drivers/can/pdur/PduR.c), [PduR_Cfg.c](../drivers/can/pdur/PduR_Cfg.c) | PduR_ComTransmit route COM→CanIf; CanIf callbacks route confirmation và Rx về COM. Config VehicleStatus global0x0010; debug counters và Rx byte snapshot phục vụ main. |
@@ -62,7 +62,7 @@ docs/implement không tồn tại. Tests CAN0 mới nằm tại tests/can_driver
 | App | app/node_app.c/h, app/gateway_app.c/h | File rỗng, chưa có application logic hoặc gateway. |
 | UART | [Driver_UART.c](../drivers/uart/Driver_UART.c), [Driver_UART.h](../drivers/uart/Driver_UART.h) | LPUART1, RX/TX byte callbacks, IRQ và blocking TX; chưa có file/session protocol tích hợp. |
 | Byte queue | [ring_buffer.c](../middlewares/ring_buffer.c), [ring_buffer.h](../middlewares/ring_buffer.h) | Byte FIFO dùng storage caller cung cấp; không phải CAN frame queue. |
-| Timebase/IRQ | drivers/systick, drivers/lpit, drivers/nvic | Tick/timer/interrupt utilities còn lại; chưa có scheduler CAN/COM mới. |
+| Timebase/IRQ | drivers/systick, drivers/lpit, drivers/nvic | `Driver_SysTick_Init(1000U, NULL)` cấp tick 1 ms cho mode COM mặc định; main xử lý bù tick trong ngữ cảnh polling, chưa đo jitter trên board. |
 | GPIO/LED | [Driver_GPIO.c](../drivers/gpio/Driver_GPIO.c), [LED.c](../bsp/LED.c), [board.h](../bsp/board.h) | Pin/LED utilities còn lại; init_MCU khởi tạo LED xanh. |
 | Ngoại vi khác | drivers/adc, drivers/rtc, drivers/common | Source còn tồn tại; không coi là logic mock communication đã tích hợp. |
 | Yêu cầu | [README.md](../requirements/README.md), [assignment](../requirements/assignment_part1_com_signal.md), [architecture notes](../requirements/part1_architecture_notes.md) | README mô tả mục tiêu tổng thể; assignment là spec chính Part 1, notes là giải thích. |
@@ -146,4 +146,8 @@ Host simulation dùng modules thật/MMIO transformer pass 27 case DLC0..8, 4 Pd
 
 TC-003 mới: ARM FLASH build strict cả `BOARD_MODE=0/1/2` ra `build/board_demo/{0,1,2}/board_mode_{0,1,2}.elf`; host tests Tx/Rx pass. Hai mode vật lý dùng CAN ID0x321, DLC3, SW2/PTC12, RGB LED, UART 115200 PTC7 TX. Chưa thử bus vật lý hoặc terminal trên board.
 
-Tài liệu đối chiếu Part 1: [checklist COM Signal](../requirements/part1_com_signal_checklist.md) có 78 mục với trường bằng chứng riêng; dùng để audit mô hình, hành vi, deliverables và acceptance criteria. Đây là danh sách chưa đánh giá, không phải chứng nhận source hiện tại đã đạt.
+Tài liệu đối chiếu Part 1: [checklist COM Signal](../requirements/part1_com_signal_checklist.md) có 78 mục; review 2026-09-18 đánh dấu 36 đạt/42 mở kèm nguồn và lỗ hổng chứng cứ. CanDrv/CanIf/COM host tests vừa chạy lại đạt; PduR route/global binding chưa có validator xuyên tầng, driver fixed CAN0 từ chối multi-controller. Main mode 3 mặc định đã có tick 1 ms nhưng chưa đo timing vật lý. Test sources cũ dưới `tests/*` bị ignore bởi Git; `tests/com_stack/` đã được unignore để giữ test scheduler mới.
+
+COM API cập nhật 2026-09-18: [Com.h](../drivers/can/com/Com.h) dùng `SignalId` và `void *SignalDataPtr` (Send nhận `const void *`); pointee là `uint32_t` cho cả Tx/Rx. Receive không trả U bit qua API; `src/can_loopback_test.c` kiểm U trên PduR raw Rx snapshot. COM host tests pass; mode COM mặc định đã full ARM compile/link sau thay đổi chữ ký, chưa flash firmware.
+
+Scheduler Part 1: `tests/com_stack/test_main_scheduler.c` pass host WRC/catch-up/wraparound; `build/com_stack/com_stack.elf` link và `nm -u` không có symbol thiếu. `g_ComStackStatus`, `g_ComStackProcessedTicks`, `g_ComStackMaxBacklog` là trạng thái debug. Không có bằng chứng board đáp ứng deadline 1 ms.

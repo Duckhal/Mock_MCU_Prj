@@ -11,20 +11,95 @@
 #include "can_loopback_test.h"
 #include <stddef.h>
 
-/* Build one image per board: 0=existing loopback, 1=TC-003 Tx, 2=TC-003 Rx.
- * Set -DBOARD_MODE=1 or -DBOARD_MODE=2 in the build configuration. */
+/* Select 0=loopback, 1=TC-003 Tx, 2=TC-003 Rx or 3=periodic COM stack.
+ * Set -DBOARD_MODE in the build configuration. */
 #define BOARD_MODE_LOOPBACK (0U)
 #define BOARD_MODE_TC003_TX (1U)
 #define BOARD_MODE_TC003_RX (2U)
+#define BOARD_MODE_COM_STACK (3U)
 #ifndef BOARD_MODE
-#define BOARD_MODE BOARD_MODE_TC003_RX
+#define BOARD_MODE BOARD_MODE_COM_STACK
 #endif
 #if ((BOARD_MODE != BOARD_MODE_LOOPBACK) && \
-     (BOARD_MODE != BOARD_MODE_TC003_TX) && (BOARD_MODE != BOARD_MODE_TC003_RX))
-#error BOARD_MODE_must_be_0_1_or_2
+     (BOARD_MODE != BOARD_MODE_TC003_TX) && \
+     (BOARD_MODE != BOARD_MODE_TC003_RX) && \
+     (BOARD_MODE != BOARD_MODE_COM_STACK))
+#error BOARD_MODE_must_be_0_1_2_or_3
 #endif
 
 #if (BOARD_MODE != BOARD_MODE_LOOPBACK)
+
+#if (BOARD_MODE == BOARD_MODE_COM_STACK)
+
+#include "../drivers/can/com/Com.h"
+
+typedef enum
+{
+    COM_STACK_STARTING = 0,
+    COM_STACK_RUNNING,
+    COM_STACK_CAN_INIT_FAILED,
+    COM_STACK_CANIF_INIT_FAILED,
+    COM_STACK_COM_INIT_FAILED,
+    COM_STACK_SYSTICK_INIT_FAILED
+} ComStack_StatusType;
+
+volatile ComStack_StatusType g_ComStackStatus;
+volatile uint32_t g_ComStackProcessedTicks;
+volatile uint32_t g_ComStackMaxBacklog;
+
+/** Process each elapsed 1 ms tick in CAN write, CAN read, then COM order. */
+static void ComStack_ProcessElapsedTicks(uint32_t now, uint32_t *lastTick)
+{
+    uint32_t elapsed = (uint32_t)(now - *lastTick);
+    if (elapsed > g_ComStackMaxBacklog)
+    { g_ComStackMaxBacklog = elapsed; }
+    while (elapsed > 0U)
+    {
+        (*lastTick)++;
+        Can_MainFunction_Write();
+        Can_MainFunction_Read();
+        Com_MainFunctionTx();
+        g_ComStackProcessedTicks++;
+        elapsed--;
+    }
+}
+
+#ifndef COM_STACK_UNIT_TEST
+/** Initialize the CAN stack and a 1 kHz timebase before scheduling COM. */
+static uint8_t ComStack_Init(void)
+{
+    g_ComStackStatus = COM_STACK_STARTING;
+    g_ComStackProcessedTicks = 0U;
+    g_ComStackMaxBacklog = 0U;
+    disable_WDOG();
+    init_MCU();
+    if (Can_Init() != CAN_OK)
+    { g_ComStackStatus = COM_STACK_CAN_INIT_FAILED; return 0U; }
+    if (CanIf_Init() != E_OK)
+    { g_ComStackStatus = COM_STACK_CANIF_INIT_FAILED; return 0U; }
+    if (Com_Init() != E_OK)
+    { g_ComStackStatus = COM_STACK_COM_INIT_FAILED; return 0U; }
+    SystemCoreClockUpdate();
+    if (Driver_SysTick_Init(1000U, NULL) != 0U)
+    { g_ComStackStatus = COM_STACK_SYSTICK_INIT_FAILED; return 0U; }
+    g_ComStackStatus = COM_STACK_RUNNING;
+    return 1U;
+}
+
+/** Poll the 1 ms SysTick counter and run each pending stack tick in order. */
+static void ComStack_Run(void)
+{
+    uint32_t lastTick;
+    if (ComStack_Init() == 0U)
+    { for (;;) {} }
+    /* Driver_SysTick_Init() reset the counter to zero; preserve early ticks. */
+    lastTick = 0U;
+    for (;;)
+    { ComStack_ProcessElapsedTicks(Driver_SysTick_GetTicks(), &lastTick); }
+}
+#endif
+
+#else /* BOARD_MODE_TC003_TX or BOARD_MODE_TC003_RX */
 
 #define BOARD_DEMO_CAN_ID       (0x321U)
 #define BOARD_DEMO_MAGIC        (0xCAU)
@@ -341,14 +416,18 @@ static void BoardDemo_Run(void)
 }
 #endif
 
-#endif /* BOARD_MODE */
+#endif /* COM stack or TC-003 role */
 
-#ifndef BOARD_DEMO_UNIT_TEST
+#endif /* BOARD_MODE != LOOPBACK */
+
+#if !defined(BOARD_DEMO_UNIT_TEST) && !defined(COM_STACK_UNIT_TEST)
 /** Dispatch to the old loopback suite or one physical board role. */
 int main(void)
 {
 #if (BOARD_MODE == BOARD_MODE_LOOPBACK)
     CanLoopbackTest_Run();
+#elif (BOARD_MODE == BOARD_MODE_COM_STACK)
+    ComStack_Run();
 #else
     BoardDemo_Run();
 #endif

@@ -107,4 +107,15 @@ Nguồn chính là [assignment_part1_com_signal.md](../requirements/assignment_p
 
 ## Checklist yêu cầu Part 1 (2026-09-18)
 
-- [Checklist Part 1](../requirements/part1_com_signal_checklist.md) tổng hợp 78 mục từ assignment, architecture notes và scheduler tip; mỗi mục có bằng chứng cần thu thập. Các ô hiện để trống vì chưa audit implementation theo checklist; scheduler tip được ghi rõ là khuyến nghị, không nâng thành yêu cầu bắt buộc.
+- [Checklist Part 1](../requirements/part1_com_signal_checklist.md) tổng hợp 78 mục từ assignment, architecture notes và scheduler tip. Review source/test ngày 2026-09-18 đánh dấu 36 mục đạt, 42 mục còn mở, mỗi mục có bằng chứng hoặc lý do thiếu. Scheduler tip vẫn là khuyến nghị.
+- Đã chạy lại CanDrv/CanIf runners và hai COM host tests; log ở `build/can_driver/verification.log`, `build/canif/verification.log`, `build/com/review_verification.log`. Test sources dưới `tests/*` hiện bị `.gitignore` bỏ qua. Ba khoảng trống chính: PduR chưa validate route/global binding xuyên tầng, CanDrv từ chối cấu hình nhiều Controller, main hai-board chưa gọi COM mỗi 1 ms. Chưa kiểm chứng board/physical CAN.
+
+## COM Signal pointer API (2026-09-18)
+
+- Theo lựa chọn của người dùng, `Com_SendSignal(SignalId, const void *SignalDataPtr)` và `Com_ReceiveSignal(SignalId, void *SignalDataPtr)` đều nhận đúng hai tham số; trong profile hiện tại con trỏ phải trỏ tới `uint32_t`. Receive chỉ xuất giá trị, không xuất Update Bit; U vẫn được COM giữ/xóa theo chính sách Tx và giải mã nằm trong raw Rx slot. Loopback harness kiểm U qua `PduR_LastRxBytes`.
+- Đã cập nhật caller trong `src/can_loopback_test.c` và hai COM host tests (test sources bị ignore). Host COM tests và 12 malformed config fixtures pass sau đổi API; `Com.c`, `can_loopback_test.c` và `main.c` compile ARM với `-Wall -Wextra -Werror`. Mode COM mặc định đã link thành ELF ARM sau thay đổi chữ ký; chưa flash/test board.
+
+## Main loop CAN/COM 1 ms (2026-09-18)
+
+- `src/main.c` mặc định `BOARD_MODE=3` cho Part 1: init Can→CanIf→Com, cập nhật `SystemCoreClock`, khởi tạo SysTick 1000 Hz; main xử lý từng tick theo thứ tự `Can_MainFunction_Write()` → `Can_MainFunction_Read()` → `Com_MainFunctionTx()`. Nếu main trễ, xử lý bù các tick đã trôi qua; `g_ComStackProcessedTicks`, `g_ComStackMaxBacklog`, `g_ComStackStatus` cho debugger. Mode 0 loopback và 1/2 TC-003 vẫn tách biệt vì cùng CAN ID 0x321 nhưng payload khác nhau.
+- `tests/com_stack/test_main_scheduler.c` kiểm tra thứ tự WRC, tick không đổi, bù tick và wraparound; pass. `build/com_stack/com_stack.elf` full ARM FLASH compile/link với macro CPU từ `.cproject`, không còn undefined symbol. Chưa đo jitter/tần số thực trên board nên checklist T02 vẫn mở; I04 đã đạt. Thất bại build thử ban đầu do thiếu CPU macro/sysroot được lưu ở `build/com_stack/build_failure.log` và `build/com_stack/build.log`; bản link thành công ở `build/com_stack/build_result.log`.

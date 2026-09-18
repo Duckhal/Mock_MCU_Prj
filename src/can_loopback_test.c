@@ -464,16 +464,20 @@ static uint8_t Loopback_RunComTest(void)
     uint32_t speed;
     uint32_t gear;
     uint32_t alive;
+    uint32_t txSpeed = 100U;
+    uint32_t txGear = 3U;
+    uint32_t txAlive = 5U;
+    uint32_t invalidGear = 128U;
     uint8_t speedU;
     uint8_t gearU;
     uint8_t aliveU;
     uint8_t tick;
 
     g_CanLoopbackTestResult.stage = LOOPBACK_STAGE_COM_TX;
-    if ((Com_SendSignal(COM_SIGNAL_VEHICLE_SPEED, 100U) != E_OK) ||
-        (Com_SendSignal(COM_SIGNAL_GEAR, 3U) != E_OK) ||
-        (Com_SendSignal(COM_SIGNAL_ALIVE_COUNTER, 5U) != E_OK) ||
-        (Com_SendSignal(COM_SIGNAL_GEAR, 128U) != E_NOT_OK))
+    if ((Com_SendSignal(COM_SIGNAL_VEHICLE_SPEED, &txSpeed) != E_OK) ||
+        (Com_SendSignal(COM_SIGNAL_GEAR, &txGear) != E_OK) ||
+        (Com_SendSignal(COM_SIGNAL_ALIVE_COUNTER, &txAlive) != E_OK) ||
+        (Com_SendSignal(COM_SIGNAL_GEAR, &invalidGear) != E_NOT_OK))
     { Loopback_Fail(LOOPBACK_ERROR_COM_SIGNAL); return 0U; }
 
     Com_MainFunctionTx(); /* t=1: period 10, offset 1. */
@@ -489,13 +493,15 @@ static uint8_t Loopback_RunComTest(void)
     g_CanLoopbackTestResult.stage = LOOPBACK_STAGE_COM_RX;
     if (Loopback_WaitComFrame(txBefore + 1U, rxBefore + 1U) == 0U)
     { return 0U; }
-    if ((Com_ReceiveSignal(COM_SIGNAL_RX_VEHICLE_SPEED, &speed, &speedU) != E_OK) ||
+    speedU = PduR_LastRxBytes[0] & 1U;
+    if ((Com_ReceiveSignal(COM_SIGNAL_RX_VEHICLE_SPEED, &speed) != E_OK) ||
         (speed != 100U) || (speedU != 1U))
     { Loopback_Fail(LOOPBACK_ERROR_COM_RECEIVE); return 0U; }
     g_CanLoopbackTestResult.comReceivedSpeed = speed;
     g_CanLoopbackTestResult.comReceivedSpeedU = speedU;
 
-    if (Com_SendSignal(COM_SIGNAL_VEHICLE_SPEED, 120U) != E_OK)
+    txSpeed = 120U;
+    if (Com_SendSignal(COM_SIGNAL_VEHICLE_SPEED, &txSpeed) != E_OK)
     { Loopback_Fail(LOOPBACK_ERROR_COM_SIGNAL); return 0U; }
     g_CanLoopbackTestResult.stage = LOOPBACK_STAGE_COM_TX;
     Com_MainFunctionTx(); /* t=12: pending retry uses latest value. */
@@ -504,9 +510,12 @@ static uint8_t Loopback_RunComTest(void)
     g_CanLoopbackTestResult.stage = LOOPBACK_STAGE_COM_RX;
     if (Loopback_WaitComFrame(txBefore + 2U, rxBefore + 2U) == 0U)
     { return 0U; }
-    if ((Com_ReceiveSignal(COM_SIGNAL_RX_VEHICLE_SPEED, &speed, &speedU) != E_OK) ||
-        (Com_ReceiveSignal(COM_SIGNAL_RX_GEAR, &gear, &gearU) != E_OK) ||
-        (Com_ReceiveSignal(COM_SIGNAL_RX_ALIVE_COUNTER, &alive, &aliveU) != E_OK) ||
+    speedU = PduR_LastRxBytes[0] & 1U;
+    gearU = PduR_LastRxBytes[2] & 1U;
+    aliveU = PduR_LastRxBytes[3] & 1U;
+    if ((Com_ReceiveSignal(COM_SIGNAL_RX_VEHICLE_SPEED, &speed) != E_OK) ||
+        (Com_ReceiveSignal(COM_SIGNAL_RX_GEAR, &gear) != E_OK) ||
+        (Com_ReceiveSignal(COM_SIGNAL_RX_ALIVE_COUNTER, &alive) != E_OK) ||
         (speed != 120U) || (speedU != 1U) ||
         (gear != 3U) || (gearU != 0U) ||
         (alive != 5U) || (aliveU != 0U))

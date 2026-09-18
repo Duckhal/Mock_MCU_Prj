@@ -247,37 +247,40 @@ Std_ReturnType Com_Init(void)
     return E_OK;
 }
 
-/** Encode a valid Tx Signal in its slot and set U without sending a frame. */
-Std_ReturnType Com_SendSignal(PduIdType SignalId, uint32_t Value)
+/** Copy a uint32_t input, encode its Tx Signal slot and set U without sending. */
+Std_ReturnType Com_SendSignal(PduIdType SignalId, const void *SignalDataPtr)
 {
     const Com_SignalConfigType *s;
     const Com_IPduConfigType *p;
     uint16_t index;
     uint8_t bits;
-    if (Com_Initialized == 0U) { return E_NOT_OK; }
+    uint32_t value;
+    if ((Com_Initialized == 0U) || (SignalDataPtr == NULL)) { return E_NOT_OK; }
     p = Com_ResolveSignal(SignalId, &s, &index);
     if ((p == NULL) || (p->direction != COM_IPDU_TX)) { return E_NOT_OK; }
+    memcpy(&value, SignalDataPtr, sizeof(value));
     bits = (uint8_t)(s->slotLength - 1U);
-    if (Value > ((1UL << bits) - 1UL)) { return E_NOT_OK; }
-    Com_WriteSlot(Com_Buffer[index], s, (Value << 1U) | 1U);
+    if (value > ((1UL << bits) - 1UL)) { return E_NOT_OK; }
+    Com_WriteSlot(Com_Buffer[index], s, (value << 1U) | 1U);
     return E_OK;
 }
 
-/** Decode the latest valid Rx Signal and its received U bit. */
-Std_ReturnType Com_ReceiveSignal(PduIdType SignalId, uint32_t *Value, uint8_t *Updated)
+/** Write a decoded Rx Signal value to a caller-owned uint32_t. */
+Std_ReturnType Com_ReceiveSignal(PduIdType SignalId, void *SignalDataPtr)
 {
     const Com_SignalConfigType *s;
     const Com_IPduConfigType *p;
     uint16_t index;
     uint32_t slot;
-    if ((Com_Initialized == 0U) || (Value == NULL) || (Updated == NULL))
+    uint32_t value;
+    if ((Com_Initialized == 0U) || (SignalDataPtr == NULL))
     { return E_NOT_OK; }
     p = Com_ResolveSignal(SignalId, &s, &index);
     if ((p == NULL) || (p->direction != COM_IPDU_RX) || (Com_RxValid[index] == 0U))
     { return E_NOT_OK; }
     slot = Com_ReadSlot(Com_Buffer[index], s);
-    *Value = slot >> 1U;
-    *Updated = (uint8_t)(slot & 1U);
+    value = slot >> 1U;
+    memcpy(SignalDataPtr, &value, sizeof(value));
     return E_OK;
 }
 
