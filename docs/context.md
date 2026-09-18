@@ -1,6 +1,12 @@
 # Project Context
 
-Cập nhật: 2026-09-18, sau khi tách loopback test khỏi main. Đọc cùng [codebase-map.md](codebase-map.md) trước mỗi task. Snapshot phải được kiểm tra lại nếu người dùng đang thay đổi repo.
+## Current application entry (2026-09-18)
+
+- src/main.c now contains only the two-board COM application. It has one main() and no BOARD_MODE selector, loopback calls, raw CanIf transmission, or embedded test helpers. SW2/PTC12 toggles Rx/Tx; Tx lights red and SW3/PTC13 updates the LED command through Com_SendSignal. Rx reads through Com_ReceiveSignal after a COM indication.
+- CAN0 is 500 kbit/s; production CanIf Tx/Rx use standard ID 0x100 and DLC 8. COM stores the LED command in its existing Gear slot at payload byte 2 as (command << 1) | Update Bit. GlobalPduId 0x0010 is a logical route, not a payload byte. COM Tx runs periodically at 10 ms only while in Tx.
+- The 1 ms loop calls Can_MainFunction_Write, Can_MainFunction_Read, then Com_MainFunctionTx in Tx. Host application/COM/CanIf mapping tests pass and the complete ARM FLASH ELF links with no undefined symbols. Board behavior and timing remain unverified. Older BOARD_MODE and direct CanIf demo notes below are historical and no longer describe the current entrypoint.
+
+Cập nhật: 2026-09-18, sau khi đổi demo sang CAN ID 0x100/DLC8. Đọc cùng [codebase-map.md](codebase-map.md) trước mỗi task. Snapshot phải được kiểm tra lại nếu người dùng đang thay đổi repo.
 
 ## Quy tắc tương tác
 
@@ -26,7 +32,7 @@ Cập nhật: 2026-09-18, sau khi tách loopback test khỏi main. Đọc cùng 
 
 | Khu vực | Trạng thái thực tế |
 |---|---|
-| CAN stack mới | [can_driver/Can.c](../drivers/can/can_driver/Can.c) có bốn API, direct register access và init helpers với English comments. Hardware hardcode CAN0: oscillator 8 MHz, 500 kbit/s, standard Classical data frames, Tx MB8 và Rx MB9. Driver validate toàn bộ controller/HOH config trước register access và resolve HOH theo ID, độc lập index. Config production có 1 controller instance 0, baudRate 500000, HTH0/HRH1. [CanIf.c](../drivers/can/canif/CanIf.c) đã triển khai Init/Transmit/TxConfirmation/RxIndication; config có Tx/Rx VehicleStatus local ID 0, CAN ID 0x321, HTH0/HRH1. Common đã có Std_ReturnType/E_OK/E_NOT_OK cùng PDU types/GlobalPduIds; CanStack_Cfg.c còn rỗng. |
+| CAN stack mới | [can_driver/Can.c](../drivers/can/can_driver/Can.c) có bốn API, direct register access và init helpers với English comments. Hardware hardcode CAN0: oscillator 8 MHz, 500 kbit/s, standard Classical data frames, Tx MB8 và Rx MB9. Driver validate toàn bộ controller/HOH config trước register access và resolve HOH theo ID, độc lập index. Config production có 1 controller instance 0, baudRate 500000, HTH0/HRH1. [CanIf.c](../drivers/can/canif/CanIf.c) đã triển khai Init/Transmit/TxConfirmation/RxIndication; config có Tx/Rx VehicleStatus local ID 0, CAN ID 0x100, HTH0/HRH1. Common đã có Std_ReturnType/E_OK/E_NOT_OK cùng PDU types/GlobalPduIds; CanStack_Cfg.c còn rỗng. |
 | Driver/upper/config/test CAN trước đây | Source CAN driver, COM, PduR/CanIf types/config, system matrix và board loopback harness trước đây đã bị xóa. Không còn profile local IDs/CAN ID đã triển khai để dùng làm baseline. |
 | Plans và host tests | docs/implement không còn. [tests/can_driver](../tests/can_driver/README.md) đạt 11 nhóm fixtures (14 malformed configs và sparse ID lookup cùng 9 regressions), thêm 9 regressions với config production thật và ARM compile. Đã bỏ reference CAN1 macro cũ. [tests/canif](../tests/canif/README.md) đạt lại 7 nhóm deterministic unit tests, smoke test config thật và ARM compile. Logs: build/can_driver/verification.log, build/canif/verification.log và integration.log. Không dùng kết quả tests đã xóa làm bằng chứng. |
 | CAN tham khảo | can_task vẫn còn driver, CanUpper, config và bài hướng dẫn; là bài riêng để tham khảo, không phải mock stack mới. |
@@ -38,7 +44,7 @@ Cập nhật: 2026-09-18, sau khi tách loopback test khỏi main. Đọc cùng 
 
 - Review khả năng nạp (2026-09-15): CanIf_loopback.elf được readelf xác nhận ARM ELF32 executable, có vector table tại Flash 0x0, flash_config tại 0x400 và Reset_Handler entry 0x529; nm không còn undefined symbols. Có thể chọn ELF này trong debug configuration cho S32K144 để nạp, nhưng chưa xác nhận flash/board runtime. can_task/test/main.c vẫn #if 0 và ngoài source entries, không phải harness trong ELF này.
 
-- [src/main.c](../src/main.c) chọn `BOARD_MODE` 0=loopback, 1=TC-003 board phát, 2=TC-003 board nhận. Mode 0 gọi `CanLoopbackTest_Run()` trong [can_loopback_test.c](../src/can_loopback_test.c), nơi giữ 27 case DLC0..8 và COM test. Hai mode vật lý vẫn nằm trong main.c, dùng CAN0/CanIf ID 0x321, payload CA/LED/sequence và UART LPUART1. PduR.c xử lý Rx/TxConfirmation thật.
+- [src/main.c](../src/main.c) now runs only the COM two-board application. It initializes Can, CanIf and Com, then polls Can Write/Read each 1 ms and runs COM Tx in Tx mode. SW2 changes role, SW3 updates the LED command through Com_SendSignal, and Rx uses Com_ReceiveSignal. CAN ID 0x100 and DLC8 are configured in CanIf/COM; the command is encoded in COM payload byte 2.
 - [.cproject](../.cproject): Debug_FLASH lấy source từ Project_Settings, bsp, drivers, include, middlewares và src. Ba cấu hình Release_FLASH/Debug_RAM/Release_RAM chỉ lấy Project_Settings, include và src.
 - can_task không nằm trong source entries của cả bốn cấu hình. Harness can_task/test/main.c còn bị bọc trong #if 0.
 - Generated Debug_FLASH vẫn có source lists cũ trỏ tới các CAN folders đã xóa; IDE cần regenerate khi build Debug_FLASH. Firmware harness đã compile/link FLASH riêng từ source thật cùng startup, BSP, GPIO/NVIC và CanDrv/CanIf/config: build/canif/CanIf_loopback.elf. Chưa flash hoặc chạy board.
@@ -117,5 +123,10 @@ Nguồn chính là [assignment_part1_com_signal.md](../requirements/assignment_p
 
 ## Main loop CAN/COM 1 ms (2026-09-18)
 
-- `src/main.c` mặc định `BOARD_MODE=3` cho Part 1: init Can→CanIf→Com, cập nhật `SystemCoreClock`, khởi tạo SysTick 1000 Hz; main xử lý từng tick theo thứ tự `Can_MainFunction_Write()` → `Can_MainFunction_Read()` → `Com_MainFunctionTx()`. Nếu main trễ, xử lý bù các tick đã trôi qua; `g_ComStackProcessedTicks`, `g_ComStackMaxBacklog`, `g_ComStackStatus` cho debugger. Mode 0 loopback và 1/2 TC-003 vẫn tách biệt vì cùng CAN ID 0x321 nhưng payload khác nhau.
+- `BOARD_MODE=3` cho Part 1 (đã là mặc định trước khi thêm mode nút bấm): init Can→CanIf→Com, cập nhật `SystemCoreClock`, khởi tạo SysTick 1000 Hz; main xử lý từng tick theo thứ tự `Can_MainFunction_Write()` → `Can_MainFunction_Read()` → `Com_MainFunctionTx()`. Nếu main trễ, xử lý bù các tick đã trôi qua; `g_ComStackProcessedTicks`, `g_ComStackMaxBacklog`, `g_ComStackStatus` cho debugger. Mode 0 loopback và 1/2/4 demo vẫn tách biệt vì cùng CAN ID 0x100 nhưng layout payload khác nhau.
 - `tests/com_stack/test_main_scheduler.c` kiểm tra thứ tự WRC, tick không đổi, bù tick và wraparound; pass. `build/com_stack/com_stack.elf` full ARM FLASH compile/link với macro CPU từ `.cproject`, không còn undefined symbol. Chưa đo jitter/tần số thực trên board nên checklist T02 vẫn mở; I04 đã đạt. Thất bại build thử ban đầu do thiếu CPU macro/sysroot được lưu ở `build/com_stack/build_failure.log` và `build/com_stack/build.log`; bản link thành công ở `build/com_stack/build_result.log`.
+
+## Hai nút điều khiển vai trò board (2026-09-18)
+
+- Current src/main.c has no BOARD_MODE selector or embedded test branch. It starts in Rx, SW2/PTC12 toggles Rx/Tx, and SW3/PTC13 updates the COM LED command only in Tx. The Tx role lights red; Rx waits for a COM indication before changing LEDs. UART logs logical mode and command.
+- Current main uses the 1 ms Can Write -> Can Read -> COM Tx order in Tx. COM owns packing, so the prior raw byte-1 LED demo format no longer applies. The production frame is CAN ID 0x100, DLC8, with the LED command and Update Bit in byte 2; GlobalPduId 0x0010 is a logical route.

@@ -28,7 +28,7 @@ typedef struct
 extern volatile Com_LogRecordType Com_LogRecords[COM_LOG_CAPACITY];
 extern volatile uint32_t Com_LogSequence;
 
-/* Read-only debugger counters; reset by Com_Init(). */
+/* Read-only debugger counters reset by Com_Init(). */
 extern volatile uint32_t Com_TxConfirmationCount;
 extern volatile uint32_t Com_RxIndicationCount;
 extern volatile uint32_t Com_TxDropCount;
@@ -41,6 +41,9 @@ Std_ReturnType Com_SendSignal(PduIdType SignalId, const void *SignalDataPtr);
 
 /** Write the latest Rx value to a caller-owned uint32_t; U remains internal. */
 Std_ReturnType Com_ReceiveSignal(PduIdType SignalId, void *SignalDataPtr);
+
+/** Return the number of valid Rx I-PDU indications since Com_Init(). */
+uint32_t Com_GetRxIndicationCount(void);
 
 /** Run the non-blocking Tx scheduler once per 1 ms. */
 void Com_MainFunctionTx(void);

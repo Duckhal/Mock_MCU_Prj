@@ -16,6 +16,11 @@
 #define COM_SIGNAL_RX_GEAR              ((PduIdType)4U)
 #define COM_SIGNAL_RX_ALIVE_COUNTER     ((PduIdType)5U)
 
+/* Demo app uses the existing 8-bit Gear slot for the LED command.
+ * COM places its Update Bit in bit 0 of payload byte 2. */
+#define COM_SIGNAL_LED_COMMAND          COM_SIGNAL_GEAR
+#define COM_SIGNAL_RX_LED_COMMAND       COM_SIGNAL_RX_GEAR
+
 /* =========================
  * Signal Group configuration
  * ========================= */

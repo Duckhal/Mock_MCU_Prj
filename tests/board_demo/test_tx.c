@@ -1,39 +1,40 @@
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
+#include "../../drivers/can/com/Com.h"
 
-#define BOARD_MODE 1
-#define BOARD_DEMO_UNIT_TEST
-#include "../../src/main.c"
+static uint8_t Test_Frame[8];
+static uint32_t Test_FrameCount;
 
+/** Capture COM's actual eight-byte transmission before Update Bit clearing. */
+Std_ReturnType PduR_ComTransmit(PduIdType id, const PduInfoType *info)
+{
+    assert(id == COM_IPDU_VEHICLE_STATUS);
+    assert(info != NULL && info->SduLength == sizeof(Test_Frame));
+    memcpy(Test_Frame, info->SduDataPtr, sizeof(Test_Frame));
+    Test_FrameCount++;
+    return E_OK;
+}
+
+/** Verify commands 0 through 3 use the COM slot and periodic scheduler. */
 int main(void)
 {
-    BoardDemo_ButtonStateType button = {1U, 1U, 0U};
-    uint8_t frame[3];
-    uint8_t command = 0U;
-    uint8_t sequence = 0U;
-    unsigned i;
-
-    assert(BoardDemo_ButtonPressed(&button, 0U, 0U) == 0U);
-    assert(BoardDemo_ButtonPressed(&button, 1U, 4U) == 0U);
-    assert(BoardDemo_ButtonPressed(&button, 0U, 5U) == 0U);
-    assert(BoardDemo_ButtonPressed(&button, 0U, 24U) == 0U);
-    assert(BoardDemo_ButtonPressed(&button, 0U, 25U) == 1U);
-    assert(BoardDemo_ButtonPressed(&button, 0U, 200U) == 0U);
-    assert(BoardDemo_ButtonPressed(&button, 1U, 201U) == 0U);
-    assert(BoardDemo_ButtonPressed(&button, 1U, 221U) == 0U);
-    assert(BoardDemo_ButtonPressed(&button, 0U, 222U) == 0U);
-    assert(BoardDemo_ButtonPressed(&button, 0U, 242U) == 1U);
-
-    for (i = 0U; i < 5U; i++)
+    uint32_t command;
+    uint32_t tick;
+    assert(Com_Init() == E_OK);
+    for (command = 0U; command < 4U; command++)
     {
-        BoardDemo_BuildNextFrame(frame, &command, &sequence);
-        assert(frame[0] == 0xCAU);
-        assert(frame[1] == (uint8_t)((i + 1U) & 3U));
-        assert(frame[2] == (uint8_t)(i + 1U));
+        assert(Com_SendSignal(COM_SIGNAL_LED_COMMAND, &command) == E_OK);
+        for (tick = 0U; tick < ((command == 0U) ? 1U : 10U); tick++)
+        { Com_MainFunctionTx(); }
+        assert(Test_FrameCount == command + 1U);
+        assert(Test_Frame[0] == 0U && Test_Frame[1] == 0U);
+        assert(Test_Frame[2] == ((command << 1U) | 1U));
+        for (tick = 3U; tick < sizeof(Test_Frame); tick++)
+        { assert(Test_Frame[tick] == 0U); }
     }
-    sequence = 255U;
-    BoardDemo_BuildNextFrame(frame, &command, &sequence);
-    assert(frame[2] == 0U);
-    puts("PASS: TC-003 Tx debounce, LED cycle, magic and sequence.");
+    for (tick = 0U; tick < 10U; tick++) { Com_MainFunctionTx(); }
+    assert(Test_FrameCount == 5U && Test_Frame[2] == 6U);
+    puts("PASS: COM periodic DLC8 Tx encodes LED command and Update Bit.");
     return 0;
 }

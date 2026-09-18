@@ -1,62 +1,31 @@
 #include <assert.h>
 #include <stdio.h>
-#include <string.h>
+#include "../../drivers/can/com/Com.h"
 
-#define BOARD_MODE 2
-#define BOARD_DEMO_UNIT_TEST
-#include "../../src/main.c"
+/** Satisfy the COM Tx callback while this test exercises only the Rx path. */
+Std_ReturnType PduR_ComTransmit(PduIdType id, const PduInfoType *info)
+{ (void)id; (void)info; return E_OK; }
 
-static unsigned ledOn[3];
-static unsigned ledOff[3];
-static char lastUart[64];
-
-static unsigned Test_LedIndex(ARM_GPIO_Pin_t pin)
-{
-    if (pin == LED_BLUE) { return 0U; }
-    if (pin == LED_RED) { return 1U; }
-    assert(pin == LED_GREEN);
-    return 2U;
-}
-
-void LED_On(ARM_GPIO_Pin_t pin) { ledOn[Test_LedIndex(pin)]++; }
-void LED_Off(ARM_GPIO_Pin_t pin) { ledOff[Test_LedIndex(pin)]++; }
-
-UART_Status_t LPUART1_SendString_Blocking(const char *line)
-{
-    size_t length = strlen(line);
-    assert(length < sizeof(lastUart));
-    memcpy(lastUart, line, length + 1U);
-    return UART_STATUS_OK;
-}
-
+/** Verify COM decodes four commands from its eight-byte Rx signal slot. */
 int main(void)
 {
-    uint8_t seen = 0U;
-    uint8_t frame[3] = {0xCAU, 1U, 5U};
-    assert(BoardDemo_DecodeFrame(NULL, 3U) == 0U);
-    BoardDemo_ProcessRx(CANIF_RX_PDU_VEHICLE_STATUS, 2U, NULL, &seen);
-    assert(g_BoardDemoResult.rxInvalid == 1U && seen == 0U);
-    BoardDemo_ProcessRx(CANIF_RX_PDU_VEHICLE_STATUS, 3U, frame, &seen);
-    assert(g_BoardDemoResult.rxFrames == 1U && ledOn[0] == 1U);
-    assert(g_BoardDemoResult.lastCommand == 1U && g_BoardDemoResult.lastSequence == 5U);
-    BoardDemo_ProcessRx(CANIF_RX_PDU_VEHICLE_STATUS, 3U, frame, &seen);
-    assert(g_BoardDemoResult.rxDuplicates == 1U && ledOn[0] == 1U);
-    frame[1] = 2U; frame[2] = 6U;
-    BoardDemo_ProcessRx(CANIF_RX_PDU_VEHICLE_STATUS, 3U, frame, &seen);
-    assert(g_BoardDemoResult.rxFrames == 2U && ledOn[1] == 1U);
-    frame[1] = 3U; frame[2] = 7U;
-    BoardDemo_ProcessRx(CANIF_RX_PDU_VEHICLE_STATUS, 3U, frame, &seen);
-    assert(g_BoardDemoResult.rxFrames == 3U && ledOn[2] == 1U);
-    frame[1] = 0U; frame[2] = 8U;
-    BoardDemo_ProcessRx(CANIF_RX_PDU_VEHICLE_STATUS, 3U, frame, &seen);
-    assert(g_BoardDemoResult.rxFrames == 4U && ledOff[0] == 4U &&
-           ledOff[1] == 4U && ledOff[2] == 4U);
-    frame[0] = 0x00U;
-    BoardDemo_ProcessRx(CANIF_RX_PDU_VEHICLE_STATUS, 3U, frame, &seen);
-    frame[0] = 0xCAU; frame[1] = 4U;
-    BoardDemo_ProcessRx(CANIF_RX_PDU_VEHICLE_STATUS, 3U, frame, &seen);
-    assert(g_BoardDemoResult.rxInvalid == 3U);
-    assert(strcmp(lastUart, "RX INVALID LENGTH/ID/DATA\r\n") == 0);
-    puts("PASS: TC-003 Rx validation, duplicate suppression, UART and RGB LEDs.");
+    uint8_t frame[8] = {0U};
+    PduInfoType info = {frame, sizeof(frame)};
+    uint32_t command;
+    uint32_t received = UINT32_MAX;
+    assert(Com_Init() == E_OK);
+    assert(Com_ReceiveSignal(COM_SIGNAL_RX_LED_COMMAND, &received) == E_NOT_OK);
+    for (command = 0U; command < 4U; command++)
+    {
+        frame[2] = (uint8_t)((command << 1U) | 1U);
+        Com_RxIndication(COM_IPDU_RX_VEHICLE_STATUS, &info);
+        assert(Com_ReceiveSignal(COM_SIGNAL_RX_LED_COMMAND, &received) == E_OK);
+        assert(received == command);
+    }
+    assert(Com_GetRxIndicationCount() == 4U);
+    info.SduLength = 7U;
+    Com_RxIndication(COM_IPDU_RX_VEHICLE_STATUS, &info);
+    assert(Com_GetRxIndicationCount() == 4U);
+    puts("PASS: COM DLC8 Rx decodes LED commands and rejects short frames.");
     return 0;
 }
