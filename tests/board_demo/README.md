@@ -4,14 +4,16 @@
 
 | `BOARD_MODE` | Image | Behavior |
 |---:|---|---|
-| `0` (default) | Loopback | Runs the existing 27 CanDrv/CanIf/PduR cases and COM test. |
+| `0` | Loopback | Calls `CanLoopbackTest_Run()` from `src/can_loopback_test.c` for the 27 CanDrv/CanIf/PduR cases and COM test. |
 | `1` | Board A, Tx | SW2/PTC12 cycles blue, red, green, off and sends one command per debounced press. |
 | `2` | Board B, Rx | Applies validated commands to the RGB LED. |
 
+The current source default is `BOARD_MODE=2` (Rx) when no build symbol is set.
 In S32 Design Studio, create two build configurations from Debug_FLASH. Add
 `BOARD_MODE=1` to the Tx configuration's C compiler defined symbols and
 `BOARD_MODE=2` to the Rx configuration. Rebuild each configuration so the IDE
-regenerates the source list, then flash the matching image to each board.
+regenerates the source list including `src/can_loopback_test.c`, then flash the
+matching image to each board.
 The prebuilt standalone validation images are
 `build/board_demo/1/board_mode_1.elf` and
 `build/board_demo/2/board_mode_2.elf` when that build output exists locally.

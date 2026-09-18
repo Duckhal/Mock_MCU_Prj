@@ -1,6 +1,6 @@
 # Project Context
 
-Cập nhật: 2026-09-17, sau khi thêm TC-003 hai board và UART. Đọc cùng [codebase-map.md](codebase-map.md) trước mỗi task. Snapshot phải được kiểm tra lại nếu người dùng đang thay đổi repo.
+Cập nhật: 2026-09-18, sau khi tách loopback test khỏi main. Đọc cùng [codebase-map.md](codebase-map.md) trước mỗi task. Snapshot phải được kiểm tra lại nếu người dùng đang thay đổi repo.
 
 ## Quy tắc tương tác
 
@@ -38,7 +38,7 @@ Cập nhật: 2026-09-17, sau khi thêm TC-003 hai board và UART. Đọc cùng 
 
 - Review khả năng nạp (2026-09-15): CanIf_loopback.elf được readelf xác nhận ARM ELF32 executable, có vector table tại Flash 0x0, flash_config tại 0x400 và Reset_Handler entry 0x529; nm không còn undefined symbols. Có thể chọn ELF này trong debug configuration cho S32K144 để nạp, nhưng chưa xác nhận flash/board runtime. can_task/test/main.c vẫn #if 0 và ngoài source entries, không phải harness trong ELF này.
 
-- [src/main.c](../src/main.c) có `BOARD_MODE` chọn 0=loopback cũ, 1=TC-003 board phát, 2=TC-003 board nhận. `Loopback_RunAll()` giữ 27 case DLC0..8 và COM test. Hai mode vật lý dùng CAN0 bình thường, CanIf CAN ID 0x321, payload 3 byte CA/LED/sequence, UART LPUART1 log; mode nhận đọc PduR Rx snapshot và điều khiển RGB LED. PduR.c xử lý Rx/TxConfirmation thật.
+- [src/main.c](../src/main.c) chọn `BOARD_MODE` 0=loopback, 1=TC-003 board phát, 2=TC-003 board nhận. Mode 0 gọi `CanLoopbackTest_Run()` trong [can_loopback_test.c](../src/can_loopback_test.c), nơi giữ 27 case DLC0..8 và COM test. Hai mode vật lý vẫn nằm trong main.c, dùng CAN0/CanIf ID 0x321, payload CA/LED/sequence và UART LPUART1. PduR.c xử lý Rx/TxConfirmation thật.
 - [.cproject](../.cproject): Debug_FLASH lấy source từ Project_Settings, bsp, drivers, include, middlewares và src. Ba cấu hình Release_FLASH/Debug_RAM/Release_RAM chỉ lấy Project_Settings, include và src.
 - can_task không nằm trong source entries của cả bốn cấu hình. Harness can_task/test/main.c còn bị bọc trong #if 0.
 - Generated Debug_FLASH vẫn có source lists cũ trỏ tới các CAN folders đã xóa; IDE cần regenerate khi build Debug_FLASH. Firmware harness đã compile/link FLASH riêng từ source thật cùng startup, BSP, GPIO/NVIC và CanDrv/CanIf/config: build/canif/CanIf_loopback.elf. Chưa flash hoặc chạy board.
@@ -85,13 +85,18 @@ Nguồn chính là [assignment_part1_com_signal.md](../requirements/assignment_p
 
 - COM slot dùng little-endian byte order trong mỗi slot byte-aligned; U là bit0. Com_Init từ chối hierarchy/ID/slot/timing sai. Tx offset1/period10/maxRetries3; mỗi tick là một lần gọi Com_MainFunctionTx do caller cung cấp, không có timer tự động trong module. COM giữ vòng 16 structured log records cho init/config/Tx retry/drop/Rx, cộng debugger counters.
 - PduR route Tx từ COM IPDU0 sang CanIf Tx0, route Rx từ CanIf Rx0 sang COM Rx IPDU1; cả hai cùng GlobalPduId 0x0010. TxConfirmation/RxIndication đi qua callbacks thật. Debug counters ở PduR và COM giữ kết quả cho main.
-- main.c tiếp tục 27 case cũ, sau đó chạy COM: giá trị đầu 100/gear3/alive5, truyền t=1; t=11 CAN MB bận, t=12 retry với speed120; nhận lại qua COM và kiểm tra U. PASS=2, FAIL=3, LED xanh khi pass. Đây là tick mô phỏng trong harness, không phải kiểm định 1 ms thực trên board.
+- Loopback module tiếp tục 27 case cũ, sau đó chạy COM: giá trị đầu 100/gear3/alive5, truyền t=1; t=11 CAN MB bận, t=12 retry với speed120; nhận lại qua COM và kiểm tra U. PASS=2, FAIL=3, LED xanh khi pass. Đây là tick mô phỏng trong harness, không phải kiểm định 1 ms thực trên board.
 - `tests/com/test_com.c` pass pack/Rx/offset/retry/latest/drop; `test_com_config.c` pass 12 malformed fixtures. Host full-stack simulation pass. CanDrv 11+9 nhóm tests và CanIf 7 nhóm + production smoke pass. ARM GCC `-Wall -Wextra -Werror` compile/link FLASH ELF `build/com/Com_full_loopback.elf` không còn undefined symbol. Logs: `build/com/build.log`, `build/com/main_host.log`. Chưa flash/chạy board.
 - `.gitignore` giữ các test cũ bị ignore và cho phép `tests/com/` hiện trong thay đổi để review cùng COM implementation.
 
 ## TC-003 hai board và UART (2026-09-17)
 
-- `src/main.c` giữ test cũ trong `Loopback_RunAll()` với các hàm riêng `Loopback_TestCanDriver`, `Loopback_TestCanIf`, `Loopback_TestPduR`, `Loopback_RunComTest`; chọn một trong ba image bằng `BOARD_MODE=0/1/2` lúc compile. Mode 1 dùng SW2/PTC12 debounce 20 ms, phát `CA command sequence`, command lần lượt 1=blue, 2=red, 3=green, 0=off. Mode 2 kiểm tra DLC/magic/command/sequence trùng rồi bật LED tương ứng. Hai mode vật lý không bật FlexCAN internal loopback.
+- `src/can_loopback_test.c` giữ test cũ trong `CanLoopbackTest_Run()` với các hàm riêng `Loopback_TestCanDriver`, `Loopback_TestCanIf`, `Loopback_TestPduR`, `Loopback_RunComTest`; `src/main.c` chọn image bằng `BOARD_MODE=0/1/2` và giữ cả hai mode TC-003. Mode 1 dùng SW2/PTC12 debounce 20 ms, phát `CA command sequence`, command lần lượt 1=blue, 2=red, 3=green, 0=off. Mode 2 kiểm tra DLC/magic/command/sequence trùng rồi bật LED tương ứng. Hai mode vật lý không bật FlexCAN internal loopback.
+
+## Tách loopback test khỏi main (2026-09-18)
+
+- Chỉ chuyển 627 dòng logic test cũ sang `src/can_loopback_test.c`, đổi hàm entry thành `CanLoopbackTest_Run()` và khai báo trong `src/can_loopback_test.h`; phần TC-003 Tx/Rx trong main giữ nguyên. So sánh source trước/sau xác nhận logic loopback và khối TC-003 không đổi.
+- ARM FLASH `-Wall -Wextra -Werror` build/link lại cả `BOARD_MODE=0/1/2` với source mới trong `build/loopback_split/`; `nm -u` không còn symbol thiếu. Host tests Tx/Rx vẫn pass. S32DS cần regenerate source list để thêm `src/can_loopback_test.c`. Chưa xác minh runtime trên board.
 - Bản demo dùng CanIf_Transmit trực tiếp cho frame 3 byte TC-003 và PduR debug Rx snapshot có sẵn để đọc frame; COM VehicleStatus hiện cấu hình 8 byte nên không được dùng cho frame này. CAN ID thực là 0x321 theo CanIf_Cfg.c, khác 0x123 của bài tham khảo. UART LPUART1 PTC7 TX/PTC6 RX, 115200 8N1; code in payload và trạng thái Tx/Rx, không nhận lệnh PC.
 - `tests/board_demo/test_tx.c` và `test_rx.c` pass host test debounce/frame/LED/validation/duplicate/UART. ARM GCC `-Wall -Wextra -Werror` compile/link cả ba `BOARD_MODE` ra `build/board_demo/{0,1,2}/board_mode_{0,1,2}.elf`, không có undefined symbols. Chưa flash/chạy trên hai board. Cách nạp và nối dây ở `tests/board_demo/README.md`.
 
@@ -99,3 +104,7 @@ Nguồn chính là [assignment_part1_com_signal.md](../requirements/assignment_p
 - Chưa có firmware của hai cộng tác viên, message matrix chính thức hoặc test vector liên ECU trong workspace để xác nhận tương thích.
 - Khi người dùng yêu cầu triển khai tiếp: đối chiếu assignment, xác định types/config/API mới, tham khảo can_task và BSP còn lại. Mọi phần CAN mới ngoài BSP vẫn đặt dưới drivers/can theo yêu cầu tổ chức project.
 - Xử lý entrypoint và source entries khi tích hợp lại; không coi guide, config hoặc kết quả test của source đã xóa là trạng thái hiện hành.
+
+## Checklist yêu cầu Part 1 (2026-09-18)
+
+- [Checklist Part 1](../requirements/part1_com_signal_checklist.md) tổng hợp 78 mục từ assignment, architecture notes và scheduler tip; mỗi mục có bằng chứng cần thu thập. Các ô hiện để trống vì chưa audit implementation theo checklist; scheduler tip được ghi rõ là khuyến nghị, không nâng thành yêu cầu bắt buộc.
