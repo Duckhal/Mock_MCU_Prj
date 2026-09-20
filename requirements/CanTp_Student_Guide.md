@@ -1,6 +1,6 @@
 # MOCK CanTp — Hướng dẫn triển khai đầy đủ (Phase 1–3)
 
-**Phiên bản:** Student Implementation Guide v2.0 · **Đối tượng:** nhóm đã hoàn thành mock COM/PduR/CanIf/CanDrv Part 1 · **Trạng thái:** tài liệu giao bài tổng hợp theo Architecture Baseline v1.0 đã duyệt.  
+**Phiên bản:** Student Implementation Guide v2.1 · **Đối tượng:** nhóm đã hoàn thành mock COM/PduR/CanIf/CanDrv Part 1 · **Trạng thái:** đã đồng bộ quy ước wire format của lớp trong `cantp_wire_format.txt`.
 **Cách sử dụng:** đọc mục 1–7 trước khi code, triển khai theo mục 8 (Phase 1) → mục 9 (Phase 2) → mục 10 (Phase 3), nghiệm thu theo mục 11. **Chỉ có ba phase, không có Phase 4 trong phạm vi bài này.**
 
 > Đây là **mock dành cho đào tạo**, mô phỏng những nguyên lý của CAN transport, không phải thư viện ISO-TP/AUTOSAR production-ready. Những đoạn C là *pseudo-C/khung interface* cần điều chỉnh với `Std_Types.h`, `PduInfoType`, quy ước ID và driver Part 1 đã có; không được coi là source code có thể build nguyên xi.
@@ -62,6 +62,8 @@ flowchart TB
 #define CANTP_MAX_NSDU        62U
 #define CANTP_CHUNK_CAPACITY  64U
 #define CANTP_FRAME_LENGTH     8U
+#define CANTP_SF_MAX_DATA      6U
+#define CANTP_FF_MIN_LENGTH    7U
 #define CANTP_BS               4U
 #define CANTP_STMIN_MS         5U
 #define CANTP_MAX_RETRIES      3U  /* số RETRY, không tính initial */
@@ -73,7 +75,7 @@ flowchart TB
 
 - Classic CAN, Normal Addressing, **mọi CanTp N-PDU dài đúng 8 byte**; TX pad `00`; RX bỏ qua *giá trị* padding và chỉ copy số byte payload thực.
 - CanIf kiểm tra `Length == 8` **chỉ với L-PDU đã map cho CanTp**, không áp ràng buộc này cho mọi COM PDU.
-- SF: 1–7 byte; FF: 8–62 byte; mỗi CF tối đa 7 byte. Không cần truyền N-SDU >62 hay refill chunk.
+- SF: 1–6 byte; FF: 7–62 byte; SF và FF mang tối đa 6 data byte, mỗi CF mang tối đa 7 data byte. Không cần truyền N-SDU >62 hay refill chunk.
 - BS=4, STmin=5 ms cố định. Sender chỉ chấp nhận CTS có đúng BS/STmin này; OVFLW thì abort. Không triển khai FC(WAIT).
 - Task/polling tick 1 ms. Các timer dùng cấu hình 100 ms **riêng ý nghĩa**, mặc dù có thể dùng một deadline cho mỗi state không chồng nhau.
 
@@ -81,26 +83,27 @@ flowchart TB
 
 ## 2. Wire format và cách tự tính frame
 
-Mỗi frame phát ra có 8 byte; cột PCI là các byte đầu của payload CAN trong Normal Addressing.
+Mỗi frame phát ra có 8 byte. Đây là wire format mock thống nhất trên lớp; nó không phải định dạng ISO-TP chuẩn. Với SF và FF, byte 0 xác định loại frame còn byte 1 chứa toàn bộ tổng chiều dài N-SDU.
 
 | Frame | Cấu trúc | Giải thích |
 |---|---|---|
-| SF | `[0x0L, D0..D(L-1), padding]` | `L=1..7`; 1 byte PCI |
-| FF | `[0x10 \| ((L>>8)&0x0F), L&0xFF, D0..D5]` | `FF_DL` **12-bit** trải trên hai byte PCI |
+| SF | `[0x00, L, D0..D(L-1), padding]` | `L=1..6`; byte 1 chứa tổng chiều dài N-SDU |
+| FF | `[0x10, L, D0..D5]` | `L=7..62`; byte 1 chứa tổng chiều dài N-SDU |
 | CF | `[0x20 \| SN, data≤7, padding]` | SN bốn bit; bắt đầu 1, modulo 16, **không reset sau FC** |
 | FC CTS | `30 04 05 00 00 00 00 00` | FS=0, BS=4, STmin=5 ms |
 | FC OVFLW | `32 00 00 00 00 00 00 00` | FS=2, receiver từ chối FF; byte còn lại trong ví dụ mock bằng 0 |
 
-**Cách tính FF:** N-SDU dài 62 (`0x003E`) → byte 0 `0x10`, byte 1 `0x3E`, không được chỉ lưu độ dài trong một byte khi viết công thức. `FF_DL=8..62` mới là phân mảnh hợp lệ ở bài này.
+**Cách đọc Length:** `frame[1]` là tổng chiều dài N-SDU, không phải số data byte có trong frame hiện tại. N-SDU dài 62 (`0x3E`) tạo FF có byte 0 `0x10`, byte 1 `0x3E`. Giá trị 7 đã là FF hợp lệ; 1..6 phải dùng SF.
 
 **Ví dụ SF 5 byte** (`D=00 01 02 03 04`):
 
 ```text
-CAN Data: 05 00 01 02 03 04 00 00
-          ^^ length=5       ^^ ^^ padding
+CAN Data: 00 05 00 01 02 03 04 00
+          ^^ ^^                ^ padding
+          SF length=5
 ```
 
-**Ví dụ FF của N-SDU 20 byte:** PCI `10 14`, rồi sáu byte `00 01 02 03 04 05`. Receiver lấy `20` từ `FF_DL`, **không** lấy `DLC=8` làm tổng message length.
+**Ví dụ FF của N-SDU 20 byte:** header `10 14`, rồi sáu byte `00 01 02 03 04 05`. Receiver lấy `20` từ `frame[1]`, **không** lấy `DLC=8` làm tổng message length.
 
 **Ví dụ CF cuối chỉ còn 2 byte:** `2N DD DD 00 00 00 00 00`. Receiver phải dùng `min(7, totalLength - receivedLength)`, không append cả 7 byte padding.
 
@@ -422,10 +425,10 @@ Dùng payload tăng dần `D[i]=i` (hex), khởi tạo queue sạch. Data CAN ID
 
 ```text
 App payload: 00 01 02 03 04
-SF:          05 00 01 02 03 04 00 00
+SF:          00 05 00 01 02 03 04 00
 ```
 
-**Expected:** một Data frame, 0 FC, một `CopyTxData(5)`, một `CopyRxData(5)`, Rx slot READY chứa **đúng 5 byte**, một final Tx E_OK và một Rx E_OK. `00 00` cuối là padding, **không** có trong Rx message.
+**Expected:** một Data frame, 0 FC, một `CopyTxData(5)`, một `CopyRxData(5)`, Rx slot READY chứa **đúng 5 byte**, một final Tx E_OK và một Rx E_OK. Byte `00` cuối là padding, **không** có trong Rx message.
 
 ### T02 — 20-byte segmented message
 
@@ -464,10 +467,10 @@ CF8: 28 37 38 39 3A 3B 3C 3D
 
 ### 7.1 Boundary sanity examples (không tạo test gate mới)
 
-- SF dài 7: `07 D0 D1 D2 D3 D4 D5 D6`, **không** FC.
-- FF dài 8: FF6, còn 2 → CF1 `[21 D6 D7 00 00 00 00 00]`, **một** CTS.
+- SF dài 6: `00 06 D0 D1 D2 D3 D4 D5`, **không** FC.
+- FF dài 7: `10 07 D0 D1 D2 D3 D4 D5`, còn 1 → CF1 `[21 D6 00 00 00 00 00 00]`, **một** CTS.
 - FF dài 60: FF6 + 7 CF×7 + CF8 5 byte; padding hai byte cuối CF8; check `min(7, remaining)`.
-- Malformed: `SF_DL=0`, `FF_DL=5` bị discard, không ảnh hưởng Rx session đang hoạt động.
+- Malformed: SF `[00 00 ...]` và FF `[10 06 ...]` bị discard, không ảnh hưởng Rx session đang hoạt động.
 
 ---
 ## 8. Phase 1 — Hướng dẫn code HAPPY PATH theo thứ tự
@@ -527,14 +530,15 @@ void CanTp_PrepareDataFrame(void)
     uint8 payloadLen;
     memset(tx.txDataFrame, 0, 8U); /* always pad Tx to DLC 8 */
 
-    if (tx.totalLength <= 7U) {
-        tx.txDataFrame[0] = (uint8)tx.totalLength;
-        memcpy(&tx.txDataFrame[1], tx.txChunkBuffer, tx.totalLength);
+    if (tx.totalLength <= 6U) {
+        tx.txDataFrame[0] = 0x00U;
+        tx.txDataFrame[1] = (uint8)tx.totalLength;
+        memcpy(&tx.txDataFrame[2], tx.txChunkBuffer, tx.totalLength);
         payloadLen = (uint8)tx.totalLength;
         tx.preparedFrameType = FRAME_SF;
     } else if (tx.txOffset == 0U) {
-        tx.txDataFrame[0] = 0x10U | ((tx.totalLength >> 8U) & 0x0FU);
-        tx.txDataFrame[1] = (uint8)(tx.totalLength & 0xFFU);
+        tx.txDataFrame[0] = 0x10U;
+        tx.txDataFrame[1] = (uint8)tx.totalLength;
         memcpy(&tx.txDataFrame[2], tx.txChunkBuffer, 6U);
         payloadLen = 6U;
         tx.preparedFrameType = FRAME_FF;
@@ -590,13 +594,13 @@ void CanTp_OnDataTxConfirmation(void)
 ### Item P1.5 — Rx SF và FF: validate rồi mới reserve
 
 1. Kiểm tra CanIf đã lọc length 8, đọc high nibble `PCI[0] & 0xF0`.
-2. SF: `length = frame[0]&0x0F`; chỉ nhận 1..7. Nếu queue đủ chỗ, reserve, copy `frame[1..length]`, set READY, RxIndication(E_OK). SF không đòi FC.
-3. FF: `total = ((frame[0]&0x0F)<<8)|frame[1]`; nếu 8..62 và queue còn chỗ thì `StartOfReception(total)`, reserve slot, copy **6 bytes** từ `frame[2..7]` vào `rxChunk[0..5]`, `receivedLength=6`, `expectedSN=1`, `blockCount=0`, prepare CTS.
+2. SF: yêu cầu `frame[0] == 0x00`, lấy `length = frame[1]` và chỉ nhận 1..6. Nếu queue đủ chỗ, reserve, copy đúng `length` byte từ `frame[2]`, set READY, RxIndication(E_OK). SF không đòi FC.
+3. FF: yêu cầu `frame[0] == 0x10`, lấy `total = frame[1]`; nếu 7..62 và queue còn chỗ thì `StartOfReception(total)`, reserve slot, copy **6 bytes** từ `frame[2..7]` vào `rxChunk[0..5]`, `receivedLength=6`, `expectedSN=1`, `blockCount=0`, prepare CTS.
 4. Phase 3 xử lý queue đầy và FF oversized bằng OVFLW, malformed bằng discard; **không để** những trường hợp đó vô tình được nhận như FF bình thường.
 
 ```c
 /* Pseudocode; use real config route and queue API. */
-if (isFF && totalLength >= 8U && totalLength <= 62U) {
+if (isFF && totalLength >= 7U && totalLength <= 62U) {
     if (PduR_CanTpStartOfReception(rxNSduId, totalLength) != BUFREQ_OK) {
         /* Phase 3: FC(OVFLW) when no capacity; no active Rx session. */
         return;
@@ -835,14 +839,15 @@ Prepare CTS / OVFLW in txFcFrame[8] ONCE
 
 | Input | Rx reaction | Ví dụ |
 |---|---|---|
-| SF_DL=0 | Discard, không reserve; không reset active Rx | `00 ...` |
-| SF_DL=1..7 | SF hợp lệ; xử lý reserve/copy/READY nếu queue còn chỗ | `03 AA BB CC 00...` |
-| FF_DL<8 | Discard, không CTS, không thay thế | `10 05 ...` |
-| FF_DL=8..62 | FF định dạng hợp lệ; xử lý slot và replacement | `10 3E ...` |
-| FF_DL>62 | FC(OVFLW), không reserve/session mới khi RX_IDLE | `10 64 ...` (100 B) |
+| SF Length=0 | Discard, không reserve; không reset active Rx | `00 00 ...` |
+| SF Length=1..6 | SF hợp lệ; xử lý reserve/copy/READY nếu queue còn chỗ | `00 03 AA BB CC 00...` |
+| SF Length>6 | Discard, không FC, không thay thế | `00 07 ...` |
+| FF Length<7 | Discard, không CTS, không thay thế | `10 06 ...` |
+| FF Length=7..62 | FF định dạng hợp lệ; xử lý slot và replacement | `10 07 ...`, `10 3E ...` |
+| FF Length>62 | FC(OVFLW), không reserve/session mới khi RX_IDLE | `10 64 ...` (100 B) |
 | CanTp L-PDU `Length != 8` | CanIf reject | L-PDU CAN TP riêng, không ảnh hưởng COM |
 
-**Padding:** Tx padding `00`; Rx không yêu cầu Rx padding phải 0 (chỉ ignore), `realBytes=min(7, remaining)` cho CF cuối. Nếu FF_DL=60, Rx nhận CF8 chỉ 5 data bytes, không copy hai padding bytes cuối.
+**Padding:** Tx padding `00`; Rx không yêu cầu Rx padding phải 0 (chỉ ignore), `realBytes=min(7, remaining)` cho CF cuối. Nếu FF Length=60, Rx nhận CF8 chỉ 5 data bytes, không copy hai padding bytes cuối.
 
 ### Item P3.2 — Queue full: SF khác FF
 
@@ -886,7 +891,7 @@ Old session: FF20 -> CTS confirmed -> CF1 and CF2 received
              RX_WAIT_CF, receivedLength=20, expectedSN=3,
              old slot=RESERVED; fcTxPending=FALSE.
 New FF62 arrives on SAME connection:
-    1. validate new FF length (8..62)
+    1. validate new FF length (7..62)
     2. AbortRx(old), one old E_NOT_OK; release old reserved slot
     3. reserve new queue slot
     4. rxChunk[0..5] = NEW FF payload, receivedLength=6, expectedSN=1
@@ -920,7 +925,7 @@ Nếu `N_Ar` timeout, không có Rx session để phát RxIndication; giữ pend
 - [ ] T11 FF 100 B → OVFLW, no reserve; malformed short FF discard without replacement.
 - [ ] T12 Rx CopyRxData(62) đúng một lần, READY trước RxIndication(E_OK), không copy padding.
 - [ ] T14 valid FF replaces active Rx khi `fcTxPending=false`, old failure một lần, new session sạch và hoàn thành.
-- [ ] SF full discard không FC; malformed SF_DL0 discard; FC CTS sai BS/STmin abort.
+- [ ] SF full discard không FC; SF Length=0 hoặc >6 bị discard; FC CTS sai BS/STmin abort.
 - [ ] `fcTxPending` giữ nguyên qua abort/IDLE đến khi matching confirmation hoặc verified recovery.
 - [ ] Regression tất cả T01–T13 vẫn PASS; không bổ sung phase tiếp theo.
 
@@ -933,7 +938,7 @@ Nếu `N_Ar` timeout, không có Rx session để phát RxIndication; giữ pend
 
 | ID | Phase | Setup / kích thích | Kết quả bắt buộc | Evidence cần nộp |
 |---|---:|---|---|---|
-| **T01** | 1 | Send payload `00..04` | Một SF `05 00 01 02 03 04 00 00`; 0 FC; Rx READY 5 B; 1 Tx/Rx E_OK | Frame trace, queue dump, callback counts |
+| **T01** | 1 | Send payload `00..04` | Một SF `00 05 00 01 02 03 04 00`; 0 FC; Rx READY 5 B; 1 Tx/Rx E_OK | Frame trace, queue dump, callback counts |
 | **T02** | 1 | Send 20 B `00..13` | FF+2 CF+1 CTS; offset 6/13/20; Rx copy 20 B một lần | 4 wire frames, app payload compare |
 | **T03** | 1 | Send 62 B `00..3D` | FF+8 CF+2 CTS; không FC3; Tx snapshot/Rx copy mỗi loại 1 lần | 11 wire frames, offset log, full payload compare |
 | **T04** | 2 | T03, log mỗi CF confirmation + next CF request | Từng pair CF liên tiếp có delta ≥5 ms, **kể cả CF4→CF5**; CTS gate đúng | Tick trace cho CF1–CF8 + hai CTS |
@@ -965,7 +970,7 @@ Nếu `N_Ar` timeout, không có Rx session để phát RxIndication; giữ pend
 Những kiểm tra này chứng minh implementation của chính các yêu cầu đã chốt:
 
 - FC request bị từ chối bốn lần → abort active Rx; `N_Ar` sau accepted FC bị mất confirmation → pending FC vẫn locked; late callback không tái tạo Rx session.
-- `SF_DL=0`, `FF_DL=5` discard, không thay thế session cũ; SF7, FF8 boundary; Rx bỏ qua padding.
+- SF `[00 00 ...]`, SF `[00 07 ...]` và FF `[10 06 ...]` bị discard, không thay thế session cũ; SF6/FF7 là hai boundary hợp lệ; Rx bỏ qua padding.
 - Queue full SF → discard không FC; FC CTS có BS≠4 hoặc STmin≠5 → Sender abort; OVFLW → abort; không viết FC(WAIT).
 - New valid SF thay thế Rx đang WAIT_CF khi FC resource idle; old reservation được release một lần.
 - App request Tx khi session đang active hoặc Data N-PDU locked → reject E_NOT_OK **không final callback**.
@@ -1043,5 +1048,3 @@ Những kiểm tra này chứng minh implementation của chính các yêu cầu
 **Ghi nhớ cuối:** `CanIf E_OK` = một *frame request được chấp nhận*; `CanTp_TxConfirmation(Data)` = một *frame locally confirmed*; `PduR_CanTpTxConfirmation(E_OK)` = một *N-SDU locally complete*; Rx READY = **Application đã có trọn N-SDU**, nhưng không có end-to-end Application ACK.
 
 ---
-
-

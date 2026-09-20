@@ -1,5 +1,10 @@
 # Project Context
 
+## CanTp guide wire-format update (2026-09-20)
+
+- `requirements/CanTp_Student_Guide.md` v2.1 now consistently follows `cantp_wire_format.txt`: SF `[00][Length][up to 6 data]`, FF `[10][Length][6 data]`, CF `[20|SN][up to 7 data]`, FC unchanged, DLC 8 and zero Tx padding. SF covers N-SDU 1..6 and FF/CF covers 7..62.
+- Configuration examples, frame vectors, pack/decode pseudocode, validation boundaries, defensive cases, T01 and the acceptance matrix were updated together. A consistency check found all required new rules, no listed obsolete rules, and balanced Markdown fences.
+
 ## CanTp skeleton (2026-09-20)
 
 - `drivers/can/cantp` now contains a compileable interface/type/config skeleton only. `CanTp_Init` and `CanTp_Transmit` fail closed with `E_NOT_OK`; callbacks and the 1 ms main function are placeholders. No CanTp protocol logic, PduR/CanIf route, CAN ID, application queue, or main-loop integration has been implemented.

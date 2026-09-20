@@ -1,5 +1,9 @@
 # Codebase Map
 
+## CanTp wire-format documentation (2026-09-20)
+
+`requirements/CanTp_Student_Guide.md` v2.1 uses the classroom mock format from `cantp_wire_format.txt` throughout. SF uses two header bytes and carries at most six data bytes; FF begins at N-SDU length seven. Examples, pseudocode and test expectations now use the same boundary.
+
 ## CanTp skeleton (2026-09-20)
 
 `drivers/can/cantp` defines the future mock transport boundary: public APIs, Tx/Rx states, runtime field layouts, fixed wire/timing constants, and one placeholder connection mapping. The module deliberately returns `E_NOT_OK` from initialization/transmit and has no segmentation, reassembly, flow control, retry, timeout, PduR/CanIf routing, queue, or scheduler integration yet. The newer two-byte SF header in `cantp_wire_format.txt` takes precedence over older one-byte SF examples in the Student Guide.
