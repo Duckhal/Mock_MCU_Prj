@@ -4,15 +4,6 @@
 #include "../common/CanStack_Types.h"
 #include <stdint.h>
 
-/* Result returned by the future PduR buffer callbacks. */
-typedef enum
-{
-    BUFREQ_OK = 0,
-    BUFREQ_E_NOT_OK,
-    BUFREQ_E_BUSY,
-    BUFREQ_E_OVFL
-} BufReq_ReturnType;
-
 /* Transmit states required by the mock CanTp state machine. */
 typedef enum
 {
@@ -63,9 +54,11 @@ typedef struct
     PduIdType rxFcNPduId;
     PduIdType canIfTxDataPduId;
     PduIdType canIfTxFcPduId;
+    PduIdType canIfRxDataPduId;
+    PduIdType canIfRxFcPduId;
 } CanTp_ConnectionConfigType;
 
-/* Runtime fields reserved for the future transmit state machine. */
+/* Runtime data for one Phase-1 transmit session. */
 typedef struct
 {
     CanTp_TxStateType state;
@@ -79,6 +72,7 @@ typedef struct
     uint8_t txPduPending;
     uint8_t resultReported;
     uint8_t priorCfExists;
+    uint8_t fcPermissionGranted;
     uint32_t lastCfConfirmedMs;
     uint32_t dataAttemptDueMs;
     uint32_t txTimerStartMs;
@@ -86,7 +80,7 @@ typedef struct
     CanTp_FrameType preparedFrameType;
 } CanTp_TxRuntimeType;
 
-/* Runtime fields reserved for the future receive state machine. */
+/* Runtime data for one Phase-1 receive session and its FC resource. */
 typedef struct
 {
     CanTp_RxStateType state;
@@ -105,5 +99,29 @@ typedef struct
     uint32_t fcAcceptedAtMs;
     uint32_t rxCrStartMs;
 } CanTp_RxRuntimeType;
+
+/* Structured phase-1 events retained for debugger inspection. */
+typedef enum
+{
+    CANTP_LOG_INIT_OK = 0,
+    CANTP_LOG_CONFIG_ERROR,
+    CANTP_LOG_TX_ACCEPTED,
+    CANTP_LOG_TX_FRAME_REQUEST,
+    CANTP_LOG_TX_FRAME_CONFIRMATION,
+    CANTP_LOG_TX_COMPLETE,
+    CANTP_LOG_RX_FRAME,
+    CANTP_LOG_FC_REQUEST,
+    CANTP_LOG_RX_COMPLETE,
+    CANTP_LOG_ERROR
+} CanTp_LogEventType;
+
+typedef struct
+{
+    uint32_t sequence;
+    CanTp_LogEventType event;
+    PduIdType pduId;
+    uint32_t state;
+    uint32_t detail;
+} CanTp_LogRecordType;
 
 #endif /* CANTP_TYPES_H_ */

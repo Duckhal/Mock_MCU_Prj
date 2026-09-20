@@ -17,4 +17,16 @@ typedef struct
     GlobalPduIdType globalPduId;
 } PduR_RxRouteConfigType;
 
+typedef struct
+{
+    GlobalPduIdType globalPduId;
+    PduIdType txNSduId;
+} PduR_CanTpTxRouteConfigType;
+
+typedef struct
+{
+    PduIdType rxNSduId;
+    GlobalPduIdType globalPduId;
+} PduR_CanTpRxRouteConfigType;
+
 #endif /* PDUR_TYPES_H_ */

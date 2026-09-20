@@ -1,21 +1,24 @@
 # Project Context
 
+## CanTp Phase 1 implementation (2026-09-20)
+
+- Phase 1 of `requirements/CanTp_Student_Guide.md` is implemented end to end for one bidirectional connection. The wire format is fixed DLC 8: SF `[00][Length][1..6 data]`, FF `[10][Length][6 data]`, CF `[20|SN][up to 7 data]`, and CTS `[30][04][05][00..]`.
+- `drivers/can/cantp/Cantp.c` now performs Tx snapshot, SF/FF/CF segmentation, CTS/block handling, 5 ms STmin scheduling, Rx reassembly, and final callbacks. Tx offset/SN advance only after the matching local Data confirmation. This phase intentionally aborts when CanIf rejects a frame; retry and the four timeouts remain Phase 2.
+- The static route is App Global PDU `0x0020` -> CanTp N-SDU 0 -> CanIf Data L-PDU 1 / CAN ID `0x650`; FC uses L-PDU 2 / CAN ID `0x658`. Existing COM remains L-PDU 0 / CAN ID `0x100`.
+- `app/node_app.c` owns a stable Tx source and a two-slot Rx queue with `FREE -> RESERVED -> READY`. PduR routes application copy/final callbacks and keeps Data and FC confirmation namespaces separate.
+- The 1 ms firmware order is Can Write, Can Read, CanTp, then COM Tx when enabled. Debug_FLASH includes the `app` source folder.
+- Evidence: `tests/cantp/run_tests.ps1` passes exact T01-T03 vectors, route/ownership/FIFO queue tests and strict ARM object compilation. CanIf, COM, button and scheduler regressions pass. `build/cantp_phase1/Mock_MCU_Prj_CanTp_Phase1.elf` links for S32K144 FLASH with no undefined symbols (text 22264, data 1072, bss 5832 bytes). Physical-board behavior is not yet verified.
+
 ## CanTp guide wire-format update (2026-09-20)
 
 - `requirements/CanTp_Student_Guide.md` v2.1 now consistently follows `cantp_wire_format.txt`: SF `[00][Length][up to 6 data]`, FF `[10][Length][6 data]`, CF `[20|SN][up to 7 data]`, FC unchanged, DLC 8 and zero Tx padding. SF covers N-SDU 1..6 and FF/CF covers 7..62.
 - Configuration examples, frame vectors, pack/decode pseudocode, validation boundaries, defensive cases, T01 and the acceptance matrix were updated together. A consistency check found all required new rules, no listed obsolete rules, and balanced Markdown fences.
 
-## CanTp skeleton (2026-09-20)
-
-- `drivers/can/cantp` now contains a compileable interface/type/config skeleton only. `CanTp_Init` and `CanTp_Transmit` fail closed with `E_NOT_OK`; callbacks and the 1 ms main function are placeholders. No CanTp protocol logic, PduR/CanIf route, CAN ID, application queue, or main-loop integration has been implemented.
-- The skeleton follows `requirements/cantp_wire_format.txt` where it overrides the older Student Guide examples: every N-PDU has DLC 8; SF is `[00][Length][up to 6 data]`; FF is `[10][Length][6 data]`; CF is `[20|SN][up to 7 data]`; N-SDU length is 1..62, with SF for 1..6 and FF/CF for 7..62. BS=4, STmin=5 ms, three retries, and all four timeouts are 100 ms.
-- Host GCC and S32K144 ARM GCC compile `Cantp.c` and `Cantp_Cfg.c` with `-Wall -Wextra -Werror`. This proves only skeleton syntax/type compatibility, not transport behavior.
-
 ## Current application entry (2026-09-18)
 
 - src/main.c now contains only the two-board COM application. It has one main() and no BOARD_MODE selector, loopback calls, raw CanIf transmission, or embedded test helpers. SW2/PTC12 toggles Rx/Tx; Tx lights red and SW3/PTC13 updates the LED command through Com_SendSignal. Rx reads through Com_ReceiveSignal after a COM indication.
 - CAN0 is 500 kbit/s; production CanIf Tx/Rx use standard ID 0x100 and DLC 8. COM stores the LED command in its existing Gear slot at payload byte 2 as (command << 1) | Update Bit. GlobalPduId 0x0010 is a logical route, not a payload byte. COM Tx runs periodically at 10 ms only while in Tx.
-- The 1 ms loop calls Can_MainFunction_Write, Can_MainFunction_Read, then Com_MainFunctionTx in Tx. Host application/COM/CanIf mapping tests pass and the complete ARM FLASH ELF links with no undefined symbols. Board behavior and timing remain unverified. Older BOARD_MODE and direct CanIf demo notes below are historical and no longer describe the current entrypoint.
+- The 1 ms loop calls Can_MainFunction_Write, Can_MainFunction_Read, CanTp_MainFunction, then Com_MainFunctionTx in Tx. Host application/COM/CanIf mapping tests pass and the complete ARM FLASH ELF links with no undefined symbols. Board behavior and timing remain unverified. Older BOARD_MODE and direct CanIf demo notes below are historical and no longer describe the current entrypoint.
 
 Cập nhật: 2026-09-18, sau khi đổi demo sang CAN ID 0x100/DLC8. Đọc cùng [codebase-map.md](codebase-map.md) trước mỗi task. Snapshot phải được kiểm tra lại nếu người dùng đang thay đổi repo.
 
@@ -48,15 +51,15 @@ Cập nhật: 2026-09-18, sau khi đổi demo sang CAN ID 0x100/DLC8. Đọc cù
 | Plans và host tests | docs/implement không còn. [tests/can_driver](../tests/can_driver/README.md) đạt 11 nhóm fixtures (14 malformed configs và sparse ID lookup cùng 9 regressions), thêm 9 regressions với config production thật và ARM compile. Đã bỏ reference CAN1 macro cũ. [tests/canif](../tests/canif/README.md) đạt lại 7 nhóm deterministic unit tests, smoke test config thật và ARM compile. Logs: build/can_driver/verification.log, build/canif/verification.log và integration.log. Không dùng kết quả tests đã xóa làm bằng chứng. |
 | CAN tham khảo | can_task vẫn còn driver, CanUpper, config và bài hướng dẫn; là bài riêng để tham khảo, không phải mock stack mới. |
 | BSP CAN | [board_can.c](../bsp/can/board_can.c) và [board_can.h](../bsp/can/board_can.h) vẫn còn disable_WDOG và init_MCU. |
-| App | node_app.c/h và gateway_app.c/h trong app còn tồn tại nhưng đều rỗng. |
+| App | node_app.c/h triển khai nguồn Tx ổn định và Rx queue FIFO hai slot cho CanTp; gateway_app.c/h vẫn rỗng. |
 | Các phần khác | Startup/vendor headers, GPIO/LED, UART, SysTick, LPIT, NVIC, ADC, RTC và ring buffer vẫn còn. Chưa được nối thành mock CAN stack hoạt động. |
 
 ## Entrypoint và build cần lưu ý
 
 - Review khả năng nạp (2026-09-15): CanIf_loopback.elf được readelf xác nhận ARM ELF32 executable, có vector table tại Flash 0x0, flash_config tại 0x400 và Reset_Handler entry 0x529; nm không còn undefined symbols. Có thể chọn ELF này trong debug configuration cho S32K144 để nạp, nhưng chưa xác nhận flash/board runtime. can_task/test/main.c vẫn #if 0 và ngoài source entries, không phải harness trong ELF này.
 
-- [src/main.c](../src/main.c) now runs only the COM two-board application. It initializes Can, CanIf and Com, then polls Can Write/Read each 1 ms and runs COM Tx in Tx mode. SW2 changes role, SW3 updates the LED command through Com_SendSignal, and Rx uses Com_ReceiveSignal. CAN ID 0x100 and DLC8 are configured in CanIf/COM; the command is encoded in COM payload byte 2.
-- [.cproject](../.cproject): Debug_FLASH lấy source từ Project_Settings, bsp, drivers, include, middlewares và src. Ba cấu hình Release_FLASH/Debug_RAM/Release_RAM chỉ lấy Project_Settings, include và src.
+- [src/main.c](../src/main.c) runs the COM two-board application and initializes NodeApp/CanTp as part of the complete stack. Each 1 ms tick polls Can Write/Read, then CanTp, and runs COM Tx in Tx mode. SW2 changes role, SW3 updates the LED command through Com_SendSignal, and Rx uses Com_ReceiveSignal.
+- [.cproject](../.cproject): Debug_FLASH lấy source từ Project_Settings, app, bsp, drivers, include, middlewares và src. Ba cấu hình Release_FLASH/Debug_RAM/Release_RAM chỉ lấy Project_Settings, include và src.
 - can_task không nằm trong source entries của cả bốn cấu hình. Harness can_task/test/main.c còn bị bọc trong #if 0.
 - Generated Debug_FLASH vẫn có source lists cũ trỏ tới các CAN folders đã xóa; IDE cần regenerate khi build Debug_FLASH. Firmware harness đã compile/link FLASH riêng từ source thật cùng startup, BSP, GPIO/NVIC và CanDrv/CanIf/config: build/canif/CanIf_loopback.elf. Chưa flash hoặc chạy board.
 

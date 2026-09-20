@@ -569,8 +569,8 @@ void CanLoopbackTest_Run(void)
     /*=========================================================================
      * CanIf Test - Loopback PDU Configuration
      *==========================================================================*/
-    /* This board test expects one bidirectional VehicleStatus L-PDU binding. */
-    if ((CANIF_NUM_TX_PDUS != 1U) || (CANIF_NUM_RX_PDUS != 1U) ||
+    /* VehicleStatus remains entry zero beside dedicated CanTp Data/FC routes. */
+    if ((CANIF_NUM_TX_PDUS != 3U) || (CANIF_NUM_RX_PDUS != 3U) ||
         (CanIf_TxPduConfig[0].txPduId != CANIF_TX_PDU_VEHICLE_STATUS) ||
         (CanIf_RxPduConfig[0].rxPduId != CANIF_RX_PDU_VEHICLE_STATUS) ||
         (CanIf_TxPduConfig[0].canId != CanIf_RxPduConfig[0].canId))

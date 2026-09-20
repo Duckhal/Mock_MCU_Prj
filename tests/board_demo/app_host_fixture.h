@@ -25,6 +25,7 @@ static uint32_t Test_ReceiveCount;
 static uint32_t Test_SchedulerCount;
 static uint32_t Test_WriteCount;
 static uint32_t Test_ReadCount;
+static uint32_t Test_CanTpCount;
 static char Test_JumpEvents[16];
 static uint8_t Test_JumpEventCount;
 static char Test_LastUart[64];
@@ -89,6 +90,8 @@ void init_MCU(void) {}
 void SystemCoreClockUpdate(void) {}
 Can_ReturnType Can_Init(void) { return CAN_OK; }
 Std_ReturnType CanIf_Init(void) { return E_OK; }
+Std_ReturnType NodeApp_Init(void) { return E_OK; }
+Std_ReturnType CanTp_Init(void) { return E_OK; }
 Std_ReturnType Com_Init(void) { Com_RxIndicationCount = 0U; return E_OK; }
 
 Std_ReturnType Com_SendSignal(PduIdType signalId, const void *value)
@@ -111,6 +114,9 @@ Std_ReturnType Com_ReceiveSignal(PduIdType signalId, void *value)
 
 void Com_MainFunctionTx(void)
 { Test_RecordEvent('C'); Test_SchedulerCount++; }
+
+void CanTp_MainFunction(void)
+{ Test_RecordEvent('T'); Test_CanTpCount++; }
 
 void Can_MainFunction_Write(void)
 { Test_RecordEvent('W'); Test_WriteCount++; }

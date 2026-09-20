@@ -11,6 +11,14 @@ typedef uint8_t Std_ReturnType;
 #define E_OK        ((Std_ReturnType)0U)
 #define E_NOT_OK    ((Std_ReturnType)1U)
 
+typedef enum
+{
+    BUFREQ_OK = 0,
+    BUFREQ_E_NOT_OK,
+    BUFREQ_E_BUSY,
+    BUFREQ_E_OVFL
+} BufReq_ReturnType;
+
 typedef struct
 {
     uint8_t *SduDataPtr;

@@ -39,7 +39,7 @@
 #define CANTP_PCI_SN_MASK              (0x0FU)
 #define CANTP_PADDING_BYTE             (0x00U)
 
-/* Skeleton handles. Each group is a separate ID namespace. */
+/* Phase-1 handles. Each group is a separate ID namespace. */
 #define CANTP_TX_NSDU                  ((PduIdType)0U)
 #define CANTP_RX_NSDU                  ((PduIdType)0U)
 #define CANTP_TX_NPDU_DATA             ((PduIdType)0U)
@@ -48,6 +48,11 @@
 #define CANTP_RX_NPDU_FC               ((PduIdType)1U)
 #define CANTP_CANIF_TX_LPDU_DATA       ((PduIdType)1U)
 #define CANTP_CANIF_TX_LPDU_FC         ((PduIdType)2U)
+#define CANTP_CANIF_RX_LPDU_DATA       ((PduIdType)1U)
+#define CANTP_CANIF_RX_LPDU_FC         ((PduIdType)2U)
+
+#define CANTP_DATA_CAN_ID              (0x650U)
+#define CANTP_FC_CAN_ID                (0x658U)
 
 extern const CanTp_ConnectionConfigType
     CanTp_ConnectionConfig[CANTP_NUM_CONNECTIONS];

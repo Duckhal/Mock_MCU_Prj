@@ -3,9 +3,14 @@
 
 #include "Cantp_Types.h"
 
+#define CANTP_LOG_CAPACITY (32U)
+
+extern volatile CanTp_LogRecordType CanTp_LogRecords[CANTP_LOG_CAPACITY];
+extern volatile uint32_t CanTp_LogSequence;
+
 /*
  * @brief Initialize the mock CanTp module.
- * @return E_NOT_OK until configuration validation and runtime setup are implemented.
+ * @return E_OK when the fixed Phase-1 configuration is valid; otherwise E_NOT_OK.
  */
 Std_ReturnType CanTp_Init(void);
 
@@ -13,9 +18,10 @@ Std_ReturnType CanTp_Init(void);
  * @brief Accept one upper-layer N-SDU transmission request.
  * @param TxNSduId Configured transmit N-SDU handle.
  * @param PduInfoPtr Complete payload request with length from 1 to 62 bytes.
- * @return E_NOT_OK while the transport state machine is not implemented.
+ * @return E_OK when the request is accepted; otherwise E_NOT_OK.
  *
- * A future E_OK return will mean request accepted, not transfer completed.
+ * E_OK means that CanTp owns the request. Final transfer status is reported
+ * later through the PduR Tx-confirmation callback.
  */
 Std_ReturnType CanTp_Transmit(PduIdType TxNSduId,
                               const PduInfoType *PduInfoPtr);
@@ -35,7 +41,9 @@ void CanTp_RxIndication(PduIdType RxNPduId,
 void CanTp_TxConfirmation(PduIdType TxNPduId);
 
 /*
- * @brief Advance retries, timeout checks and STmin scheduling by one 1 ms tick.
+ * @brief Advance Phase-1 STmin scheduling and submit at most one Data frame.
+ *
+ * Retry and timeout processing is added in Phase 2.
  */
 void CanTp_MainFunction(void);
 

@@ -7,15 +7,19 @@
  * Tx L-PDU configuration
  * ========================= */
 
-#define CANIF_NUM_TX_PDUS               (1U)
+#define CANIF_NUM_TX_PDUS               (3U)
 #define CANIF_TX_PDU_VEHICLE_STATUS     ((PduIdType)0U)
+#define CANIF_TX_PDU_CANTP_DATA          ((PduIdType)1U)
+#define CANIF_TX_PDU_CANTP_FC            ((PduIdType)2U)
 
 /* =========================
  * Rx L-PDU configuration
  * ========================= */
 
-#define CANIF_NUM_RX_PDUS               (1U)
+#define CANIF_NUM_RX_PDUS               (3U)
 #define CANIF_RX_PDU_VEHICLE_STATUS     ((PduIdType)0U)
+#define CANIF_RX_PDU_CANTP_DATA          ((PduIdType)1U)
+#define CANIF_RX_PDU_CANTP_FC            ((PduIdType)2U)
 
 /* =========================
  * Configuration tables

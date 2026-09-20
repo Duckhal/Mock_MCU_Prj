@@ -15,6 +15,7 @@ build/
 tests/*
 !tests/board_demo/
 !tests/com_stack/
+!tests/cantp/
 
 # Temporary files
 *.tmp

@@ -3,7 +3,9 @@
 #include "../bsp/LED.h"
 #include "../drivers/can/can_driver/Can.h"
 #include "../drivers/can/canif/CanIf.h"
+#include "../drivers/can/cantp/Cantp.h"
 #include "../drivers/can/com/Com.h"
+#include "../app/node_app.h"
 #include "../drivers/gpio/Driver_GPIO.h"
 #include "../drivers/systick/Driver_SysTick.h"
 #include "../drivers/uart/Driver_UART.h"
@@ -21,6 +23,8 @@ typedef enum
     APP_UART_FAILED,
     APP_CAN_FAILED,
     APP_CANIF_FAILED,
+    APP_NODE_FAILED,
+    APP_CANTP_FAILED,
     APP_COM_FAILED,
     APP_SYSTICK_FAILED,
     APP_SIGNAL_FAILED
@@ -95,6 +99,10 @@ int main(void)
     { g_AppStatus = APP_CAN_FAILED; for (;;) {} }
     if (CanIf_Init() != E_OK)
     { g_AppStatus = APP_CANIF_FAILED; for (;;) {} }
+    if (NodeApp_Init() != E_OK)
+    { g_AppStatus = APP_NODE_FAILED; for (;;) {} }
+    if (CanTp_Init() != E_OK)
+    { g_AppStatus = APP_CANTP_FAILED; for (;;) {} }
     if (Com_Init() != E_OK)
     { g_AppStatus = APP_COM_FAILED; for (;;) {} }
 
@@ -114,6 +122,7 @@ int main(void)
             lastTick++;
             Can_MainFunction_Write();
             Can_MainFunction_Read();
+            CanTp_MainFunction();
 
             /* Sample switches once at the newest observed tick. */
             if (lastTick == now)

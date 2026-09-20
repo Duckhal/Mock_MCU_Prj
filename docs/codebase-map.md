@@ -1,16 +1,31 @@
 # Codebase Map
 
+## CanTp Phase 1 active path (2026-09-20)
+
+```text
+NodeApp_Transmit(Global PDU 0x0020)
+  -> PduR_Transmit -> CanTp_Transmit(Tx N-SDU 0)
+  -> CanIf Data L-PDU 1 -> CAN ID 0x650
+
+CAN ID 0x650 -> CanIf Data L-PDU 1 -> PduR -> CanTp Rx Data N-PDU 0
+CAN ID 0x658 <-> CanIf FC L-PDU 2 <-> PduR <-> CanTp FC N-PDU 1
+  -> NodeApp two-slot Rx queue
+```
+
+- CanTp implementation/config/types: `drivers/can/cantp/`.
+- Application ownership and Rx queue: `app/node_app.c` and `app/node_app.h`.
+- Large-PDU routing: `drivers/can/pdur/PduR.c` and `PduR_Cfg.c`.
+- CAN-ID binding: `drivers/can/canif/CanIf_Cfg.c` (`0x650` Data, `0x658` FC). COM keeps `0x100`.
+- Deterministic evidence: `tests/cantp/`; run `tests/cantp/run_tests.ps1`.
+- Phase boundary: T01-T03 are implemented. Retry/timeouts and defensive T04-T14 behavior remain in Phases 2-3.
+
 ## CanTp wire-format documentation (2026-09-20)
 
 `requirements/CanTp_Student_Guide.md` v2.1 uses the classroom mock format from `cantp_wire_format.txt` throughout. SF uses two header bytes and carries at most six data bytes; FF begins at N-SDU length seven. Examples, pseudocode and test expectations now use the same boundary.
 
-## CanTp skeleton (2026-09-20)
-
-`drivers/can/cantp` defines the future mock transport boundary: public APIs, Tx/Rx states, runtime field layouts, fixed wire/timing constants, and one placeholder connection mapping. The module deliberately returns `E_NOT_OK` from initialization/transmit and has no segmentation, reassembly, flow control, retry, timeout, PduR/CanIf routing, queue, or scheduler integration yet. The newer two-byte SF header in `cantp_wire_format.txt` takes precedence over older one-byte SF examples in the Student Guide.
-
 ## Current entrypoint (2026-09-18)
 
-src/main.c is now only the two-board COM application: one main(), no BOARD_MODE selector or embedded test dispatch. SW2 changes Rx/Tx, SW3 updates the LED command via Com_SendSignal in Tx, and Rx applies Com_ReceiveSignal data. Each 1 ms tick polls Can Write then Can Read; COM Tx is called afterward in Tx. The production CanIf Tx/Rx mapping is CAN ID 0x100, DLC 8; the command uses COM payload byte 2 with an Update Bit. The logical GlobalPduId is not serialized. Host tests pass and the ARM FLASH ELF links; board runtime has not been tested. Historical mode-specific notes below refer to superseded firmware.
+src/main.c is now only the two-board COM application: one main(), no BOARD_MODE selector or embedded test dispatch. SW2 changes Rx/Tx, SW3 updates the LED command via Com_SendSignal in Tx, and Rx applies Com_ReceiveSignal data. Each 1 ms tick polls Can Write, Can Read and CanTp; COM Tx is called afterward in Tx. The production CanIf COM Tx/Rx mapping is CAN ID 0x100, DLC 8; CanTp uses Data 0x650 and FC 0x658. Host tests pass and the ARM FLASH ELF links; board runtime has not been tested. Historical mode-specific notes below refer to superseded firmware.
 
 Snapshot: 2026-09-18, sau khi thêm SW2/SW3 đổi vai trò Tx/Rx. Quy tắc tương tác và mục tiêu: [context.md](context.md). Map này phản ánh source và kiểm chứng host/ARM; không chứng minh firmware chạy được trên board.
 
@@ -25,7 +40,7 @@ CanDrv, CanIf, PduR and COM are connected for VehicleStatus Tx/Rx. COM packs sig
 ## Cây thư mục còn lại
 
 ~~~text
-app/                         node_app.c/h, gateway_app.c/h — đều rỗng
+app/                         node_app.c/h — CanTp ownership/FIFO queue; gateway_app.c/h — rỗng
 bsp/
   can/                       board_can.c/h — watchdog, clock, pin, transceiver
   LED.c/h, board.h            LED và thông tin board
@@ -65,13 +80,13 @@ docs/implement không tồn tại. Tests CAN0 mới nằm tại tests/can_driver
 | Startup/linker | Project_Settings/Startup_Code, Project_Settings/Linker_Files | Reset/vector/memory layout và vendor headers trong include; chưa audit toàn bộ ở lượt này. |
 | CAN common mới | [CanStack_Types.h](../drivers/can/common/CanStack_Types.h), [CanStack_Cfg.h](../drivers/can/common/CanStack_Cfg.h), [CanStack_Cfg.c](../drivers/can/common/CanStack_Cfg.c) | Common PDU types đã có; header config định nghĩa ba GlobalPduId vehicle/engine/climate 0x0010..0x0012. CanStack_Cfg.c còn rỗng; chưa có binding qua các tầng. |
 | CAN driver mới | [Can.c](../drivers/can/can_driver/Can.c), [Can.h](../drivers/can/can_driver/Can.h), [Can_Types.h](../drivers/can/can_driver/Can_Types.h), [Can_cfg.c](../drivers/can/can_driver/Can_cfg.c), [Can_Cfg.h](../drivers/can/can_driver/Can_Cfg.h) | Bốn API, hardware CAN0/8 MHz oscillator/500 kbit/s, standard Classical data, Tx MB8/Rx MB9. Validate toàn bộ config và resolve HOH→object→controller theo ID. Production HTH0/HRH1; logical IDs có thể sparse. Snapshot Tx, saved swPduHandle, bounded waits và debugger logs; callbacks nối sang CanIf. |
-| CanIf Part 1 | [CanIf.c](../drivers/can/canif/CanIf.c), [CanIf.h](../drivers/can/canif/CanIf.h), [types](../drivers/can/canif/CanIf_Types.h), [config](../drivers/can/canif/CanIf_Cfg.c) | VehicleStatus Tx/Rx local ID 0 use standard CAN ID 0x100 and HTH0/HRH1; CanIf routes through PduR. |
+| CanIf Part 1 | [CanIf.c](../drivers/can/canif/CanIf.c), [CanIf.h](../drivers/can/canif/CanIf.h), [types](../drivers/can/canif/CanIf_Types.h), [config](../drivers/can/canif/CanIf_Cfg.c) | VehicleStatus local ID 0 uses CAN ID 0x100; CanTp Data/FC IDs 1/2 use 0x650/0x658. CanIf enforces DLC8 for CanTp and routes through PduR. |
 | CanIf tests | [README](../tests/canif/README.md), [runner](../tests/canif/run_tests.ps1) | 7 nhóm fixtures unit tests và production-config smoke test đạt; ARM production object compile đạt. Full firmware với PduR/COM đã link; chưa chứng minh board runtime. |
 | CAN0 host tests | [test_can_driver.c](../tests/can_driver/test_can_driver.c), [run_tests.ps1](../tests/can_driver/run_tests.ps1), [README](../tests/can_driver/README.md) | Real vendor types/masks + fake MMIO W1C/handshakes và capture callbacks; 11 nhóm fixtures (14 malformed configs/sparse IDs/9 regressions) và 9 regressions với config production đạt. Runner compile production driver ARM Cortex-M4; full stack FLASH ELF link đạt. Chưa board runtime. |
 | CAN BSP | [board_can.c](../bsp/can/board_can.c), [board_can.h](../bsp/can/board_can.h) | Main gọi disable_WDOG/init_MCU trước driver init; sử dụng S32K144.h và LED BSP. BSP waits cũ unbounded. |
 | CAN reference driver | [Can.c](../can_task/driver/src/Can.c), [Can.h](../can_task/driver/inc/Can.h), [Can_Cfg.c](../can_task/driver/src/Can_Cfg.c) | FlexCAN0; config normal/loopback, MB0 Tx và MB1 Rx exact 0x123. Driver include/callback trực tiếp CanUpper; không phải driver mới. |
 | Reference upper/test | [CanUpper.c](../can_task/upper/src/CanUpper.c), [test/main.c](../can_task/test/main.c) | CanUpper gọi driver, giữ PDU data/status; harness #if 0. Chưa nối với firmware main. |
-| App | app/node_app.c/h, app/gateway_app.c/h | File rỗng, chưa có application logic hoặc gateway. |
+| App | [node_app.c](../app/node_app.c), [node_app.h](../app/node_app.h), app/gateway_app.c/h | NodeApp owns a stable CanTp Tx source and a two-slot FIFO Rx queue; gateway files remain empty. |
 | UART | [Driver_UART.c](../drivers/uart/Driver_UART.c), [Driver_UART.h](../drivers/uart/Driver_UART.h) | LPUART1, RX/TX byte callbacks, IRQ và blocking TX; chưa có file/session protocol tích hợp. |
 | Byte queue | [ring_buffer.c](../middlewares/ring_buffer.c), [ring_buffer.h](../middlewares/ring_buffer.h) | Byte FIFO dùng storage caller cung cấp; không phải CAN frame queue. |
 | Timebase/IRQ | drivers/systick, drivers/lpit, drivers/nvic | `Driver_SysTick_Init(1000U, NULL)` cấp tick 1 ms cho mode COM mặc định; main xử lý bù tick trong ngữ cảnh polling, chưa đo jitter trên board. |
@@ -122,12 +137,12 @@ COM sở hữu packing/timing; PduR sở hữu routing; CanIf sở hữu CAN ID 
 
 ## Build và entrypoints
 
-- Debug_FLASH source entries: Project_Settings (loại Linker_Files và Debugger), bsp, drivers, include, middlewares, src.
+- Debug_FLASH source entries: Project_Settings (loại Linker_Files và Debugger), app, bsp, drivers, include, middlewares, src.
 - Release_FLASH, Debug_RAM, Release_RAM: Project_Settings với cùng exclusions, include, src. Chưa đồng nhất source set với Debug_FLASH.
-- can_task và app không nằm trong source entries của cả bốn cấu hình.
+- can_task không nằm trong source entries; app chỉ nằm trong Debug_FLASH.
 - Firmware entrypoint is src/main.c, with one COM application path. Legacy tests are separate and are not dispatched by main.
 - Main không còn tham chiếu header loopback đã xóa. Generated Debug_FLASH makefiles vẫn trỏ tới các CAN folders cũ; regenerate trong IDE khi build Debug_FLASH.
-- Khi được yêu cầu tích hợp/build: sửa entrypoint/source entries trong project metadata và regenerate bằng S32DS. Không dùng generated makefiles/ELF cũ làm nguồn sự thật.
+- Regenerate generated makefiles bằng S32DS sau khi thay source entries; không dùng generated makefiles/ELF cũ làm nguồn sự thật.
 
 ## Điểm sửa cho công việc tiếp theo
 

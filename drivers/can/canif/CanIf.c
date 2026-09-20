@@ -135,6 +135,20 @@ static const CanIf_RxPduConfigType *CanIf_GetRxPdu(
     return NULL;
 }
 
+/** Return whether a Tx L-PDU belongs to CanTp and therefore requires DLC 8. */
+static uint8_t CanIf_IsCanTpTxPdu(PduIdType txPduId)
+{
+    return (uint8_t)((txPduId == CANIF_TX_PDU_CANTP_DATA) ||
+                     (txPduId == CANIF_TX_PDU_CANTP_FC));
+}
+
+/** Return whether an Rx L-PDU belongs to CanTp and therefore requires DLC 8. */
+static uint8_t CanIf_IsCanTpRxPdu(PduIdType rxPduId)
+{
+    return (uint8_t)((rxPduId == CANIF_RX_PDU_CANTP_DATA) ||
+                     (rxPduId == CANIF_RX_PDU_CANTP_FC));
+}
+
 /** Validate Tx IDs, Direct Binding uniqueness and references to Tx hardware. */
 static Std_ReturnType CanIf_ValidateTxConfig(void)
 {
@@ -262,6 +276,13 @@ Std_ReturnType CanIf_Transmit(PduIdType TxPduId, const PduInfoType *PduInfoPtr)
         CanIf_Log(CANIF_LOG_API_ERROR, TxPduId, 0U, 0U, CANIF_ERROR_UNKNOWN_PDU);
         return E_NOT_OK;
     }
+    if ((CanIf_IsCanTpTxPdu(TxPduId) != 0U) &&
+        (PduInfoPtr->SduLength != CANIF_MAX_DATA_LENGTH))
+    {
+        CanIf_Log(CANIF_LOG_API_ERROR, TxPduId, config->canId,
+                  config->hth, CANIF_ERROR_LENGTH);
+        return E_NOT_OK;
+    }
     canPdu.swPduHandle = config->txPduId;
     canPdu.id = config->canId;
     canPdu.length = PduInfoPtr->SduLength;
@@ -329,6 +350,13 @@ void CanIf_RxIndication(Can_HwHandleType Hrh, const Can_RxPduType *RxPdu)
     if (config == NULL)
     {
         CanIf_Log(CANIF_LOG_RX_UNMAPPED, 0U, RxPdu->canId, Hrh, CANIF_ERROR_UNKNOWN_PDU);
+        return;
+    }
+    if ((CanIf_IsCanTpRxPdu(config->rxPduId) != 0U) &&
+        (RxPdu->length != CANIF_MAX_DATA_LENGTH))
+    {
+        CanIf_Log(CANIF_LOG_API_ERROR, config->rxPduId, config->canId,
+                  Hrh, CANIF_ERROR_LENGTH);
         return;
     }
     pduInfo.SduDataPtr = RxPdu->dataPtr;

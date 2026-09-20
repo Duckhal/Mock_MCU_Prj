@@ -9,7 +9,8 @@ waits for a valid COM indication and applies the received command to its LEDs.
 Both switches are active-low with a 20 ms debounce.
 
 The 1 ms application loop calls `Can_MainFunction_Write()`, then
-`Can_MainFunction_Read()`, then `Com_MainFunctionTx()` while in Tx. COM sends
+`Can_MainFunction_Read()`, then `CanTp_MainFunction()`, and finally
+`Com_MainFunctionTx()` while in Tx. COM sends
 the configured I-PDU periodically (10 ms period, 1 ms initial offset), so a
 SW3 press updates the next scheduled transmission; it does not send one frame
 immediately. No COM Tx scheduling runs in Rx. An already accepted CAN request
