@@ -1,5 +1,11 @@
 # Project Context
 
+## CanTp skeleton (2026-09-20)
+
+- `drivers/can/cantp` now contains a compileable interface/type/config skeleton only. `CanTp_Init` and `CanTp_Transmit` fail closed with `E_NOT_OK`; callbacks and the 1 ms main function are placeholders. No CanTp protocol logic, PduR/CanIf route, CAN ID, application queue, or main-loop integration has been implemented.
+- The skeleton follows `requirements/cantp_wire_format.txt` where it overrides the older Student Guide examples: every N-PDU has DLC 8; SF is `[00][Length][up to 6 data]`; FF is `[10][Length][6 data]`; CF is `[20|SN][up to 7 data]`; N-SDU length is 1..62, with SF for 1..6 and FF/CF for 7..62. BS=4, STmin=5 ms, three retries, and all four timeouts are 100 ms.
+- Host GCC and S32K144 ARM GCC compile `Cantp.c` and `Cantp_Cfg.c` with `-Wall -Wextra -Werror`. This proves only skeleton syntax/type compatibility, not transport behavior.
+
 ## Current application entry (2026-09-18)
 
 - src/main.c now contains only the two-board COM application. It has one main() and no BOARD_MODE selector, loopback calls, raw CanIf transmission, or embedded test helpers. SW2/PTC12 toggles Rx/Tx; Tx lights red and SW3/PTC13 updates the LED command through Com_SendSignal. Rx reads through Com_ReceiveSignal after a COM indication.

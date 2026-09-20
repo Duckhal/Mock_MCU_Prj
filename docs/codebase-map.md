@@ -1,5 +1,9 @@
 # Codebase Map
 
+## CanTp skeleton (2026-09-20)
+
+`drivers/can/cantp` defines the future mock transport boundary: public APIs, Tx/Rx states, runtime field layouts, fixed wire/timing constants, and one placeholder connection mapping. The module deliberately returns `E_NOT_OK` from initialization/transmit and has no segmentation, reassembly, flow control, retry, timeout, PduR/CanIf routing, queue, or scheduler integration yet. The newer two-byte SF header in `cantp_wire_format.txt` takes precedence over older one-byte SF examples in the Student Guide.
+
 ## Current entrypoint (2026-09-18)
 
 src/main.c is now only the two-board COM application: one main(), no BOARD_MODE selector or embedded test dispatch. SW2 changes Rx/Tx, SW3 updates the LED command via Com_SendSignal in Tx, and Rx applies Com_ReceiveSignal data. Each 1 ms tick polls Can Write then Can Read; COM Tx is called afterward in Tx. The production CanIf Tx/Rx mapping is CAN ID 0x100, DLC 8; the command uses COM payload byte 2 with an Update Bit. The logical GlobalPduId is not serialized. Host tests pass and the ARM FLASH ELF links; board runtime has not been tested. Historical mode-specific notes below refer to superseded firmware.

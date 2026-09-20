@@ -1,0 +1,12 @@
+Các em cập nhật lại định dạng CAN frame theo quy ước đã thống nhất trên lớp:
+SF: [0x00][Length][Data...] — tối đa 6 byte dữ liệu.
+FF: [0x10][Length][Data...] — tối đa 6 byte dữ liệu.
+CF: [0x20 | SN][Data...] — tối đa 7 byte dữ liệu.
+FC: Giữ nguyên định dạng hiện tại.
+Length nằm trọn trong byte thứ hai (frame[1]), biểu diễn tổng độ dài N-SDU, không phải số byte payload của frame hiện tại.
+Cập nhật điều kiện phân loại: N-SDU dài 1–6 byte dùng SF; dài 7–62 byte dùng FF + CF. Do đó, FF có Length = 7 là hợp lệ trong mock protocol của chúng ta; hãy sửa validation cũ vốn coi FF nhỏ hơn 8 byte là không hợp lệ.
+Ví dụ:
+N-SDU 5 byte: 00 05 D0 D1 D2 D3 D4 00
+N-SDU 20 byte: 10 14 D0 D1 D2 D3 D4 D5
+N-SDU 62 byte: 10 3E D0 D1 D2 D3 D4 D5
+Tất cả CAN frame vẫn có DLC = 8 và padding bằng 0x00. Các em cập nhật đồng bộ phần đóng gói, giải mã PCI, kiểm tra độ dài và unit test. Đây là quy ước của mock CanTp, không phải wire format chuẩn ISO-TP.
