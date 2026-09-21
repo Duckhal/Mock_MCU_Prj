@@ -26,6 +26,7 @@ static uint32_t Test_SchedulerCount;
 static uint32_t Test_WriteCount;
 static uint32_t Test_ReadCount;
 static uint32_t Test_CanTpCount;
+static uint32_t Test_CanTpLoopbackCount;
 static char Test_JumpEvents[16];
 static uint8_t Test_JumpEventCount;
 static char Test_LastUart[64];
@@ -92,6 +93,8 @@ Can_ReturnType Can_Init(void) { return CAN_OK; }
 Std_ReturnType CanIf_Init(void) { return E_OK; }
 Std_ReturnType NodeApp_Init(void) { return E_OK; }
 Std_ReturnType CanTp_Init(void) { return E_OK; }
+Std_ReturnType CanTpLoopbackTest_Run(void)
+{ Test_CanTpLoopbackCount++; return E_OK; }
 Std_ReturnType Com_Init(void) { Com_RxIndicationCount = 0U; return E_OK; }
 
 Std_ReturnType Com_SendSignal(PduIdType signalId, const void *value)

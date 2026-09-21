@@ -10,6 +10,7 @@
 #include "../drivers/systick/Driver_SysTick.h"
 #include "../drivers/uart/Driver_UART.h"
 #include "system_S32K144.h"
+#include "can_loopback_test.h"
 #include <stddef.h>
 
 #define APP_UART_BAUD        (115200U)
@@ -25,6 +26,7 @@ typedef enum
     APP_CANIF_FAILED,
     APP_NODE_FAILED,
     APP_CANTP_FAILED,
+    APP_CANTP_LOOPBACK_FAILED,
     APP_COM_FAILED,
     APP_SYSTICK_FAILED,
     APP_SIGNAL_FAILED
@@ -54,7 +56,7 @@ static const char *const App_RxMessages[4] =
     "RX LED GREEN+BLUE\r\n"
 };
 
-/** Initialize the CAN stack, then run the button and LED application each tick. */
+/** Initialize the stack, require CanTp loopback PASS, then run the application. */
 int main(void)
 {
     uint32_t lastTick = 0U;
@@ -91,28 +93,83 @@ int main(void)
         (Driver_GPIO0.SetDirection(GPIO_C13, ARM_GPIO_INPUT) != ARM_DRIVER_OK) ||
         (Driver_GPIO0.SetPullResistor(GPIO_C12, ARM_GPIO_PULL_UP) != ARM_DRIVER_OK) ||
         (Driver_GPIO0.SetPullResistor(GPIO_C13, ARM_GPIO_PULL_UP) != ARM_DRIVER_OK))
-    { g_AppStatus = APP_GPIO_FAILED; for (;;) {} }
+    {
+        g_AppStatus = APP_GPIO_FAILED;
+        for (;;)
+        {
+        }
+    }
 
     if (LPUART1_Init(APP_UART_BAUD) != UART_STATUS_OK)
-    { g_AppStatus = APP_UART_FAILED; for (;;) {} }
+    {
+        g_AppStatus = APP_UART_FAILED;
+        for (;;)
+        {
+        }
+    }
     if (Can_Init() != CAN_OK)
-    { g_AppStatus = APP_CAN_FAILED; for (;;) {} }
+    {
+        g_AppStatus = APP_CAN_FAILED;
+        for (;;)
+        {
+        }
+    }
     if (CanIf_Init() != E_OK)
-    { g_AppStatus = APP_CANIF_FAILED; for (;;) {} }
+    {
+        g_AppStatus = APP_CANIF_FAILED;
+        for (;;)
+        {
+        }
+    }
     if (NodeApp_Init() != E_OK)
-    { g_AppStatus = APP_NODE_FAILED; for (;;) {} }
+    {
+        g_AppStatus = APP_NODE_FAILED;
+        for (;;)
+        {
+        }
+    }
     if (CanTp_Init() != E_OK)
-    { g_AppStatus = APP_CANTP_FAILED; for (;;) {} }
+    {
+        g_AppStatus = APP_CANTP_FAILED;
+        for (;;)
+        {
+        }
+    }
     if (Com_Init() != E_OK)
-    { g_AppStatus = APP_COM_FAILED; for (;;) {} }
+    {
+        g_AppStatus = APP_COM_FAILED;
+        for (;;)
+        {
+        }
+    }
 
     SystemCoreClockUpdate();
     if (Driver_SysTick_Init(1000U, NULL) != 0U)
-    { g_AppStatus = APP_SYSTICK_FAILED; for (;;) {} }
+    {
+        g_AppStatus = APP_SYSTICK_FAILED;
+        for (;;)
+        {
+        }
+    }
+    if (CanTpLoopbackTest_Run() != E_OK)
+    {
+        g_AppStatus = APP_CANTP_LOOPBACK_FAILED;
+        for (;;)
+        {
+        }
+    }
+    lastTick = Driver_SysTick_GetTicks();
+    if (LPUART1_SendString_Blocking("CANTP LOOPBACK PASS\r\n") !=
+        UART_STATUS_OK)
+    {
+        g_AppUartErrors++;
+    }
     lastRxCount = Com_GetRxIndicationCount();
     g_AppStatus = APP_RUNNING;
     if (LPUART1_SendString_Blocking("MODE RX WAIT CAN\r\n") != UART_STATUS_OK)
-    { g_AppUartErrors++; }
+    {
+        g_AppUartErrors++;
+    }
 
     for (;;)
     {
@@ -132,7 +189,10 @@ int main(void)
                 uint8_t wasTx = txMode;
 
                 if (sw2 != sw2Raw)
-                { sw2Raw = sw2; sw2ChangedAt = now; }
+                {
+                    sw2Raw = sw2;
+                    sw2ChangedAt = now;
+                }
                 if ((sw2 != sw2Stable) &&
                     ((uint32_t)(now - sw2ChangedAt) >= APP_DEBOUNCE_TICKS))
                 {
@@ -148,19 +208,26 @@ int main(void)
                         {
                             LED_On(LED_RED);
                             if (LPUART1_SendString_Blocking("MODE TX SW3=UPDATE\r\n") != UART_STATUS_OK)
-                            { g_AppUartErrors++; }
+                            {
+                                g_AppUartErrors++;
+                            }
                         }
                         else
                         {
                             lastRxCount = Com_GetRxIndicationCount();
                             if (LPUART1_SendString_Blocking("MODE RX WAIT CAN\r\n") != UART_STATUS_OK)
-                            { g_AppUartErrors++; }
+                            {
+                                g_AppUartErrors++;
+                            }
                         }
                     }
                 }
 
                 if (sw3 != sw3Raw)
-                { sw3Raw = sw3; sw3ChangedAt = now; }
+                {
+                    sw3Raw = sw3;
+                    sw3ChangedAt = now;
+                }
                 if ((sw3 != sw3Stable) &&
                     ((uint32_t)(now - sw3ChangedAt) >= APP_DEBOUNCE_TICKS))
                 {
@@ -168,10 +235,17 @@ int main(void)
                     if ((sw3 == 0U) && (wasTx != 0U) && (txMode != 0U))
                     {
                         if (Com_SendSignal(COM_SIGNAL_LED_COMMAND, &nextCommand) != E_OK)
-                        { g_AppStatus = APP_SIGNAL_FAILED; for (;;) {} }
+                        {
+                            g_AppStatus = APP_SIGNAL_FAILED;
+                            for (;;)
+                            {
+                            }
+                        }
                         g_AppTxSignalUpdates++;
                         if (LPUART1_SendString_Blocking(App_TxMessages[nextCommand]) != UART_STATUS_OK)
-                        { g_AppUartErrors++; }
+                        {
+                            g_AppUartErrors++;
+                        }
                         nextCommand = (nextCommand + 1U) & 3U;
                     }
                 }
@@ -181,27 +255,47 @@ int main(void)
                     uint32_t command = 0U;
                     lastRxCount = Com_GetRxIndicationCount();
                     if (Com_ReceiveSignal(COM_SIGNAL_RX_LED_COMMAND, &command) != E_OK)
-                    { g_AppStatus = APP_SIGNAL_FAILED; for (;;) {} }
+                    {
+                        g_AppStatus = APP_SIGNAL_FAILED;
+                        for (;;)
+                        {
+                        }
+                    }
                     if (command <= 3U)
                     {
                         LED_Off(LED_BLUE);
                         LED_Off(LED_RED);
                         LED_Off(LED_GREEN);
-                        if ((command & 1U) != 0U) { LED_On(LED_GREEN); }
-                        if ((command & 2U) != 0U) { LED_On(LED_BLUE); }
+                        if ((command & 1U) != 0U)
+                        {
+                            LED_On(LED_GREEN);
+                        }
+                        if ((command & 2U) != 0U)
+                        {
+                            LED_On(LED_BLUE);
+                        }
                         g_AppRxCommands++;
                         if (LPUART1_SendString_Blocking(App_RxMessages[command]) != UART_STATUS_OK)
-                        { g_AppUartErrors++; }
+                        {
+                            g_AppUartErrors++;
+                        }
                     }
                     else
-                    { g_AppInvalidRxCommands++; }
+                    {
+                        g_AppInvalidRxCommands++;
+                    }
                 }
                 else if (txMode != 0U)
-                { lastRxCount = Com_GetRxIndicationCount(); }
+                {
+                    lastRxCount = Com_GetRxIndicationCount();
+                }
             }
 
             /* COM is periodic in Tx; Rx performs no transmission scheduling. */
-            if (txMode != 0U) { Com_MainFunctionTx(); }
+            if (txMode != 0U)
+            {
+                Com_MainFunctionTx();
+            }
             g_AppProcessedTicks++;
         }
     }

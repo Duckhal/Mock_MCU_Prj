@@ -1,5 +1,9 @@
 # Codebase Map
 
+## CanTp startup self-test (2026-09-21)
+
+`src/main.c` calls `CanTpLoopbackTest_Run()` after Can/CanIf/NodeApp/CanTp/COM and SysTick initialization. `src/cantp_loopback_test.c` temporarily enables CAN0 internal loopback, sends one 62-byte application N-SDU through the production stack, verifies the reassembled queue payload, restores normal mode, and returns. The application starts only after PASS; inspect `g_CanTpLoopbackTestResult` on failure.
+
 ## CanTp Phase 1 active path (2026-09-20)
 
 ```text
@@ -25,7 +29,7 @@ CAN ID 0x658 <-> CanIf FC L-PDU 2 <-> PduR <-> CanTp FC N-PDU 1
 
 ## Current entrypoint (2026-09-18)
 
-src/main.c is now only the two-board COM application: one main(), no BOARD_MODE selector or embedded test dispatch. SW2 changes Rx/Tx, SW3 updates the LED command via Com_SendSignal in Tx, and Rx applies Com_ReceiveSignal data. Each 1 ms tick polls Can Write, Can Read and CanTp; COM Tx is called afterward in Tx. The production CanIf COM Tx/Rx mapping is CAN ID 0x100, DLC 8; CanTp uses Data 0x650 and FC 0x658. Host tests pass and the ARM FLASH ELF links; board runtime has not been tested. Historical mode-specific notes below refer to superseded firmware.
+src/main.c runs the CanTp startup self-test and then the two-board COM application: one main(), no BOARD_MODE selector or legacy test dispatch. SW2 changes Rx/Tx, SW3 updates the LED command via Com_SendSignal in Tx, and Rx applies Com_ReceiveSignal data. Each 1 ms tick polls Can Write, Can Read and CanTp; COM Tx is called afterward in Tx. The production CanIf COM Tx/Rx mapping is CAN ID 0x100, DLC 8; CanTp uses Data 0x650 and FC 0x658. Host tests pass and the ARM FLASH ELF links; board runtime has not been tested.
 
 Snapshot: 2026-09-18, sau khi thêm SW2/SW3 đổi vai trò Tx/Rx. Quy tắc tương tác và mục tiêu: [context.md](context.md). Map này phản ánh source và kiểm chứng host/ARM; không chứng minh firmware chạy được trên board.
 
@@ -56,7 +60,7 @@ drivers/
   can/com/                   Com.c/h và types/config; có Tx/Rx runtime
   adc/, common/, gpio/, lpit/, nvic/, rtc/, systick/, uart/
 middlewares/                 ring_buffer.c/h
-src/                         main.c — COM two-board application; can_loopback_test.c/h — separate legacy tests
+src/                         main.c — COM app + CanTp startup self-test; cantp_loopback_test.c — active self-test; can_loopback_test.c/h — legacy tests/shared declarations
 requirements/                assignment, architecture notes, README, overview
   assumptions/               API_SPEC, flow.xml, Tx-Rx Flow PNG
 docs/                        context.md, codebase-map.md, can-init-sequence.md
@@ -112,7 +116,7 @@ src/main.c
 
 Current physical application: SW3 -> Com_SendSignal -> Com_MainFunctionTx -> PduR -> CanIf -> CAN0 bus -> CanIf Rx -> PduR -> COM -> Com_ReceiveSignal -> RGB LED. CAN ID 0x100, DLC8, command in COM byte 2.
 
-src/can_loopback_test.c remains separate from main and is not called by the current application.
+src/can_loopback_test.c remains a separate legacy harness. The active startup self-test is src/cantp_loopback_test.c.
 
 Reference can_task độc lập:
 

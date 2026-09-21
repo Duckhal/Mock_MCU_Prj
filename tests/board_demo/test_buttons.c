@@ -7,10 +7,11 @@ int main(void)
 {
     Test_RxAt = 145U;
     Test_RxValue = 2U;
-    Test_RunApp(160U);
+    Test_RunApp(161U);
 
     assert(g_AppStatus == APP_RUNNING && g_AppModeTx == 0U);
     assert(g_AppProcessedTicks == 160U);
+    assert(Test_CanTpLoopbackCount == 1U);
     assert(Test_WriteCount == 160U && Test_ReadCount == 160U);
     assert(Test_SendCount == 2U && g_AppTxSignalUpdates == 2U);
     assert(Test_SentCommands[0] == 0U && Test_SentCommands[1] == 1U);

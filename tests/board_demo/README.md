@@ -1,8 +1,12 @@
 ﻿# Two-board COM LED application
 
-`src/main.c` is the application entry point. It contains no board-test mode or
-loopback test. Flash the same firmware on both S32K144 boards. Both start in
-Rx with all LEDs off. SW2/PTC12 changes the role between Rx and Tx. In Tx,
+`src/main.c` is the application entry point. It contains no legacy test
+dispatch. At boot it runs one 62-byte CanTp internal-loopback self-test,
+restores CAN0 normal mode, then starts the two-board application. Inspect
+`g_CanTpLoopbackTestResult`; PASS is 2 and FAIL is 3. UART prints
+`CANTP LOOPBACK PASS` after a successful self-test. Flash the same firmware
+on both S32K144 boards. Both start in Rx with all LEDs off. SW2/PTC12 changes
+the role between Rx and Tx. In Tx,
 the red LED stays on and each SW3/PTC13 press updates the COM LED command
 through 0 (off), 1 (green), 2 (blue), 3 (green and blue). In Rx, the board
 waits for a valid COM indication and applies the received command to its LEDs.

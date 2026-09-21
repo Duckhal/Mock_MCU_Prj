@@ -1,5 +1,11 @@
 # Project Context
 
+## CanTp board loopback integration (2026-09-21)
+
+- `src/cantp_loopback_test.c` runs a 62-byte N-SDU through the real NodeApp -> PduR -> CanTp -> CanIf -> CanDrv path using CAN0 internal loopback. It uses the real 1 ms SysTick, verifies final Tx/Rx E_OK, consumes the READY queue entry, compares all 62 bytes, and restores CAN0 normal mode before returning.
+- `src/main.c` initializes the complete stack and SysTick, requires the CanTp self-test to pass, then starts the existing two-board COM application. Failure latches `APP_CANTP_LOOPBACK_FAILED`; debugger evidence is in `g_CanTpLoopbackTestResult`. Main error blocks now use conventional multiline formatting.
+- Host main/scheduler integration tests and CanTp T01-T03 regressions pass. The new harness and main compile with strict Cortex-M4 warnings; full FLASH ELF `build/cantp_loopback/Mock_MCU_Prj_CanTp_Loopback.elf` links with no undefined symbols (text 23672, data 1072, bss 5992). Physical board execution remains unverified.
+
 ## CanTp Phase 1 implementation (2026-09-20)
 
 - Phase 1 of `requirements/CanTp_Student_Guide.md` is implemented end to end for one bidirectional connection. The wire format is fixed DLC 8: SF `[00][Length][1..6 data]`, FF `[10][Length][6 data]`, CF `[20|SN][up to 7 data]`, and CTS `[30][04][05][00..]`.
@@ -16,7 +22,7 @@
 
 ## Current application entry (2026-09-18)
 
-- src/main.c now contains only the two-board COM application. It has one main() and no BOARD_MODE selector, loopback calls, raw CanIf transmission, or embedded test helpers. SW2/PTC12 toggles Rx/Tx; Tx lights red and SW3/PTC13 updates the LED command through Com_SendSignal. Rx reads through Com_ReceiveSignal after a COM indication.
+- src/main.c has one main(), runs the dedicated CanTp startup self-test, then enters the two-board COM application. It has no BOARD_MODE selector, raw CanIf transmission, or embedded legacy test helpers. SW2/PTC12 toggles Rx/Tx; Tx lights red and SW3/PTC13 updates the LED command through Com_SendSignal. Rx reads through Com_ReceiveSignal after a COM indication.
 - CAN0 is 500 kbit/s; production CanIf Tx/Rx use standard ID 0x100 and DLC 8. COM stores the LED command in its existing Gear slot at payload byte 2 as (command << 1) | Update Bit. GlobalPduId 0x0010 is a logical route, not a payload byte. COM Tx runs periodically at 10 ms only while in Tx.
 - The 1 ms loop calls Can_MainFunction_Write, Can_MainFunction_Read, CanTp_MainFunction, then Com_MainFunctionTx in Tx. Host application/COM/CanIf mapping tests pass and the complete ARM FLASH ELF links with no undefined symbols. Board behavior and timing remain unverified. Older BOARD_MODE and direct CanIf demo notes below are historical and no longer describe the current entrypoint.
 
@@ -142,5 +148,5 @@ Nguồn chính là [assignment_part1_com_signal.md](../requirements/assignment_p
 
 ## Hai nút điều khiển vai trò board (2026-09-18)
 
-- Current src/main.c has no BOARD_MODE selector or embedded test branch. It starts in Rx, SW2/PTC12 toggles Rx/Tx, and SW3/PTC13 updates the COM LED command only in Tx. The Tx role lights red; Rx waits for a COM indication before changing LEDs. UART logs logical mode and command.
+- After the CanTp startup self-test passes, src/main.c starts in Rx. SW2/PTC12 toggles Rx/Tx, and SW3/PTC13 updates the COM LED command only in Tx. The Tx role lights red; Rx waits for a COM indication before changing LEDs. UART logs the self-test result, logical mode and command.
 - Current main uses the 1 ms Can Write -> Can Read -> COM Tx order in Tx. COM owns packing, so the prior raw byte-1 LED demo format no longer applies. The production frame is CAN ID 0x100, DLC8, with the LED command and Update Bit in byte 2; GlobalPduId 0x0010 is a logical route.
