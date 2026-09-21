@@ -14,6 +14,23 @@ volatile PduIdType PduR_LastRxPduId;
 volatile PduLengthType PduR_LastRxLength;
 volatile uint8_t PduR_LastRxBytes[8];
 
+/** Reset all PduR-owned runtime observations to a deterministic state. */
+Std_ReturnType PduR_Init(void)
+{
+    uint8_t index;
+
+    PduR_TxConfirmationCount = 0U;
+    PduR_RxIndicationCount = 0U;
+    PduR_LastTxPduId = 0U;
+    PduR_LastRxPduId = 0U;
+    PduR_LastRxLength = 0U;
+    for (index = 0U; index < sizeof(PduR_LastRxBytes); index++)
+    {
+        PduR_LastRxBytes[index] = 0U;
+    }
+    return E_OK;
+}
+
 /** Snapshot one valid lower-layer Rx callback for debugger inspection. */
 static void PduR_SnapshotRx(PduIdType RxPduId,
                             const PduInfoType *PduInfoPtr)
@@ -28,7 +45,9 @@ static void PduR_SnapshotRx(PduIdType RxPduId,
     PduR_RxIndicationCount++;
 }
 
-Std_ReturnType PduR_ComTransmit(PduIdType ComTxPduId, const PduInfoType *PduInfoPtr)
+/** Route one COM Tx I-PDU to its configured CanIf Tx L-PDU. */
+Std_ReturnType PduR_ComTransmit(PduIdType ComTxPduId,
+                               const PduInfoType *PduInfoPtr)
 {
     uint16_t index;
 

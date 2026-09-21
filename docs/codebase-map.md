@@ -1,5 +1,33 @@
 # Codebase Map
 
+## UART state-integrity observation (2026-09-21)
+
+`app/app.c` validates application state before using the LED-command value as
+a UART message-table index. Invalid state is captured in debugger-visible
+fields and returned to `src/main.c`, which applies the system runtime-failure
+policy. Repro and validation logs are under `build/uart_corruption/`.
+
+## Current integration boundary (2026-09-21)
+
+`src/main.c` is the system composition root: board boot, ordered stack init,
+application init, SysTick, optional CanTp loopback, system error policy, and the
+1 ms scheduler. `app/app.c` owns buttons, mode, LED/UART behavior, COM signal
+use, and the application side of large CanTp messages. `app/node_app.c` owns
+CanTp buffers, queue, and PduR-facing callbacks. `app/gateway_app.c` is an empty
+future boundary. PduR now has an explicit `PduR_Init()` lifecycle API.
+
+The scheduler path is:
+
+~~~text
+Can_MainFunction_Write -> Can_MainFunction_Read -> CanTp_MainFunction
+                       -> App_MainFunction -> Com_MainFunctionTx (when enabled)
+~~~
+
+Evidence is in `build/app_refactor/host_verification.log`,
+`build/cantp_phase1/verification.log`, `build/app_refactor/arm_compile.log`, and
+`build/app_refactor/link_result.log`. The linked ELF has no undefined symbols;
+physical board behavior remains unverified.
+
 ## CanTp startup self-test (2026-09-21)
 
 `src/main.c` calls `CanTpLoopbackTest_Run()` after Can/CanIf/NodeApp/CanTp/COM and SysTick initialization. `src/cantp_loopback_test.c` temporarily enables CAN0 internal loopback, sends one 62-byte application N-SDU through the production stack, verifies the reassembled queue payload, restores normal mode, and returns. The application starts only after PASS; inspect `g_CanTpLoopbackTestResult` on failure.

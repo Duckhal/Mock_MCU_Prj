@@ -17,6 +17,23 @@ static PduIdType Test_LastRxNPdu;
 static uint32_t Test_TxConfirmationCalls;
 static PduIdType Test_LastTxNPdu;
 
+/** Verify PduR initialization resets all module-owned observations. */
+static void Test_PduRInit(void)
+{
+    PduR_TxConfirmationCount = 3U;
+    PduR_RxIndicationCount = 4U;
+    PduR_LastTxPduId = 5U;
+    PduR_LastRxPduId = 6U;
+    PduR_LastRxLength = 7U;
+    PduR_LastRxBytes[0] = 0xAAU;
+
+    assert(PduR_Init() == E_OK);
+    assert(PduR_TxConfirmationCount == 0U);
+    assert(PduR_RxIndicationCount == 0U);
+    assert(PduR_LastTxPduId == 0U && PduR_LastRxPduId == 0U);
+    assert(PduR_LastRxLength == 0U && PduR_LastRxBytes[0] == 0U);
+}
+
 /** Emulate CanTp acceptance and request its one PduR Tx snapshot. */
 Std_ReturnType CanTp_Transmit(PduIdType TxNSduId,
                               const PduInfoType *PduInfoPtr)
@@ -155,6 +172,7 @@ static void Test_LowerRoutes(void)
 
 int main(void)
 {
+    Test_PduRInit();
     Test_ApplicationTxRoute();
     Test_ApplicationRxQueue();
     Test_LowerRoutes();

@@ -1,5 +1,40 @@
 # Project Context
 
+## UART corruption guard (2026-09-21)
+
+- A physical-board trace showed valid UART lines followed by binary bytes and
+  truncated text. Source tracing found one Tx owner (`app/app.c`) and a missing
+  range check before `App_NextCommand` indexed the UART message table.
+- Deterministic repro `build/uart_corruption/repro_invalid_command.c` showed
+  the pre-fix code accepted command `0x100` and continued through the invalid
+  table access. After the fix it returns `E_NOT_OK` before UART transmission.
+- `App_ValidateState()` now checks command, switch, and lifecycle invariants.
+  It records `g_AppStateErrorMask`, `g_AppLastInvalidTxCommand`, and
+  `g_AppStateCorruptionCount`; main latches `SYSTEM_APP_RUNTIME_FAILED`.
+- Button/scheduler/app and CanTp regressions pass. Strict ARM compile passes;
+  `build/uart_corruption/Mock_MCU_Prj_Uart_Guard.elf` links with no undefined
+  symbols (text 26008, data 1072, bss 6456). A new board trace is still needed
+  to determine what first corrupts state, or whether remaining corruption is
+  outside firmware on the UART electrical/terminal path.
+
+## System/application separation and PduR lifecycle (2026-09-21)
+
+- `src/main.c` now owns only board boot, stack lifecycle, application lifecycle,
+  SysTick setup, the 1 ms scheduler, system failure policy, and the optional
+  CanTp startup loopback. It contains no button, LED, UART business, COM signal,
+  or N-SDU construction logic.
+- `app/app.c` owns SW2/SW3 debounce, Tx/Rx mode, LED/UART indications, COM signal
+  use, and CanTp large-message submission/consumption. `app/node_app.c` remains
+  the stable CanTp Tx source and two-slot Rx queue/callback boundary.
+- Initialization is board hardware, application peripherals, CanDrv, CanIf,
+  PduR, CanTp, COM, application state, SysTick, then optional loopback.
+  `PduR_Init()` resets all PduR debugger/runtime observations.
+- The 1 ms order is Can Write, Can Read, CanTp, App, then COM Tx when permitted
+  by application policy. Host behavior, scheduler, app/CanTp, and PduR lifecycle
+  tests pass. Strict ARM compilation passes and
+  `build/app_refactor/Mock_MCU_Prj_App_Refactor.elf` links without undefined
+  symbols (text 25752, data 1072, bss 6440). Board execution remains unverified.
+
 ## CanTp board loopback integration (2026-09-21)
 
 - `src/cantp_loopback_test.c` runs a 62-byte N-SDU through the real NodeApp -> PduR -> CanTp -> CanIf -> CanDrv path using CAN0 internal loopback. It uses the real 1 ms SysTick, verifies final Tx/Rx E_OK, consumes the READY queue entry, compares all 62 bytes, and restores CAN0 normal mode before returning.

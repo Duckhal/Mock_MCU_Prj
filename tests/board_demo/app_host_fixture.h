@@ -9,6 +9,7 @@
 #define main App_Entry
 #include "../../src/main.c"
 #undef main
+#include "../../app/app.c"
 
 static jmp_buf Test_StopPoint;
 static uint32_t Test_Tick;
@@ -27,6 +28,13 @@ static uint32_t Test_WriteCount;
 static uint32_t Test_ReadCount;
 static uint32_t Test_CanTpCount;
 static uint32_t Test_CanTpLoopbackCount;
+static uint32_t Test_PduRInitCount;
+static uint32_t Test_NodeReadyCount;
+static uint32_t Test_NodeTransmitCount;
+static PduLengthType Test_NodeRxLength;
+static uint8_t Test_NodeRxData[NODE_APP_MAX_NSDU_LENGTH];
+static PduLengthType Test_NodeTxLength;
+static uint8_t Test_NodeTxData[NODE_APP_MAX_NSDU_LENGTH];
 static char Test_JumpEvents[16];
 static uint8_t Test_JumpEventCount;
 static char Test_LastUart[64];
@@ -50,8 +58,11 @@ static void Test_RecordEvent(char event)
 static uint32_t Test_GpioInput(ARM_GPIO_Pin_t pin)
 {
     if (pin == GPIO_C12)
-    { return ((Test_Tick >= 5U && Test_Tick <= 30U) ||
-              (Test_Tick >= 110U && Test_Tick <= 135U)) ? 0U : 1U; }
+    {
+        Test_RecordEvent('A');
+        return ((Test_Tick >= 5U && Test_Tick <= 30U) ||
+                (Test_Tick >= 110U && Test_Tick <= 135U)) ? 0U : 1U;
+    }
     assert(pin == GPIO_C13);
     return ((Test_Tick >= 40U && Test_Tick <= 65U) ||
             (Test_Tick >= 90U && Test_Tick <= 115U)) ? 0U : 1U;
@@ -93,9 +104,41 @@ Can_ReturnType Can_Init(void) { return CAN_OK; }
 Std_ReturnType CanIf_Init(void) { return E_OK; }
 Std_ReturnType NodeApp_Init(void) { return E_OK; }
 Std_ReturnType CanTp_Init(void) { return E_OK; }
+Std_ReturnType PduR_Init(void)
+{ Test_PduRInitCount++; return E_OK; }
 Std_ReturnType CanTpLoopbackTest_Run(void)
 { Test_CanTpLoopbackCount++; return E_OK; }
 Std_ReturnType Com_Init(void) { Com_RxIndicationCount = 0U; return E_OK; }
+
+uint8_t NodeApp_GetReadyCount(void)
+{ return (uint8_t)Test_NodeReadyCount; }
+
+Std_ReturnType NodeApp_Receive(uint8_t *data, PduLengthType capacity,
+                               PduLengthType *length)
+{
+    if ((data == NULL) || (length == NULL) || (Test_NodeReadyCount == 0U) ||
+        (capacity < Test_NodeRxLength))
+    {
+        return E_NOT_OK;
+    }
+    memcpy(data, Test_NodeRxData, Test_NodeRxLength);
+    *length = Test_NodeRxLength;
+    Test_NodeReadyCount--;
+    return E_OK;
+}
+
+Std_ReturnType NodeApp_Transmit(const uint8_t *data, PduLengthType length)
+{
+    if ((data == NULL) || (length == 0U) ||
+        (length > NODE_APP_MAX_NSDU_LENGTH))
+    {
+        return E_NOT_OK;
+    }
+    memcpy(Test_NodeTxData, data, length);
+    Test_NodeTxLength = length;
+    Test_NodeTransmitCount++;
+    return E_OK;
+}
 
 Std_ReturnType Com_SendSignal(PduIdType signalId, const void *value)
 {

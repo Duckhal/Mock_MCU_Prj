@@ -11,7 +11,12 @@ extern volatile PduIdType PduR_LastRxPduId;
 extern volatile PduLengthType PduR_LastRxLength;
 extern volatile uint8_t PduR_LastRxBytes[8];
 
-Std_ReturnType PduR_ComTransmit(PduIdType ComTxPduId, const PduInfoType *PduInfoPtr);
+/** Reset PduR runtime observations before communication starts. */
+Std_ReturnType PduR_Init(void);
+
+/** Route one COM Tx I-PDU to its configured CanIf Tx L-PDU. */
+Std_ReturnType PduR_ComTransmit(PduIdType ComTxPduId,
+                               const PduInfoType *PduInfoPtr);
 /** Route one application large-message request to its CanTp Tx N-SDU. */
 Std_ReturnType PduR_Transmit(GlobalPduIdType GlobalPduId,
                             const PduInfoType *PduInfoPtr);
