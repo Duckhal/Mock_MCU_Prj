@@ -32,6 +32,79 @@ static Std_ReturnType Test_RxFinalResult;
 static uint8_t Test_RxData[CANTP_MAX_NSDU_LENGTH];
 static PduLengthType Test_RxLength;
 static uint8_t Test_RxReserved;
+static uint8_t Test_RxReady;
+static uint8_t Test_InjectedCtsCount;
+
+/** Print one eight-byte frame in a stable machine-readable evidence format. */
+static void Test_PrintFrame(const char *TestId, const char *Direction,
+                            uint8_t Index, const Test_FrameType *Frame)
+{
+    uint8_t byte;
+    printf("EVIDENCE %s %s index=%u tick=%lu lpdu=%u bytes=",
+           TestId, Direction, (unsigned)Index,
+           (unsigned long)Frame->tick, (unsigned)Frame->id);
+    for (byte = 0U; byte < CANTP_FRAME_LENGTH; byte++)
+    {
+        printf("%02X%s", Frame->bytes[byte],
+               (byte + 1U < CANTP_FRAME_LENGTH) ? " " : "");
+    }
+    putchar('\n');
+}
+
+/** Return the most recent committed Tx offset retained by the CanTp log. */
+static PduLengthType Test_LastConfirmedOffset(void)
+{
+    uint32_t sequence;
+    PduLengthType offset = 0U;
+    uint32_t first = (CanTp_LogSequence > CANTP_LOG_CAPACITY) ?
+        (CanTp_LogSequence - CANTP_LOG_CAPACITY) : 0U;
+    for (sequence = first; sequence < CanTp_LogSequence; sequence++)
+    {
+        const volatile CanTp_LogRecordType *record =
+            &CanTp_LogRecords[sequence % CANTP_LOG_CAPACITY];
+        if ((record->sequence == sequence) &&
+            (record->event == CANTP_LOG_TX_FRAME_CONFIRMATION))
+        {
+            offset = (PduLengthType)record->detail;
+        }
+    }
+    return offset;
+}
+
+/** Print the sender frame/timing/callback evidence retained by the fixture. */
+static void Test_PrintTxEvidence(const char *TestId)
+{
+    uint8_t index;
+    uint8_t confirmation = 0U;
+    uint32_t sequence;
+    uint32_t first = (CanTp_LogSequence > CANTP_LOG_CAPACITY) ?
+        (CanTp_LogSequence - CANTP_LOG_CAPACITY) : 0U;
+    printf("EVIDENCE %s TX_SUMMARY frames=%u injected_cts=%u copy_tx=%lu "
+           "tx_final_count=%lu tx_final_result=%u committed_offset=%u\n",
+           TestId, (unsigned)Test_FrameCount,
+           (unsigned)Test_InjectedCtsCount,
+           (unsigned long)Test_CopyTxCalls,
+           (unsigned long)Test_TxFinalCalls,
+           (unsigned)Test_TxFinalResult,
+           (unsigned)Test_LastConfirmedOffset());
+    for (index = 0U; index < Test_FrameCount; index++)
+    {
+        Test_PrintFrame(TestId, "DATA_TX", index, &Test_Frames[index]);
+    }
+    for (sequence = first; sequence < CanTp_LogSequence; sequence++)
+    {
+        const volatile CanTp_LogRecordType *record =
+            &CanTp_LogRecords[sequence % CANTP_LOG_CAPACITY];
+        if ((record->sequence == sequence) &&
+            (record->event == CANTP_LOG_TX_FRAME_CONFIRMATION))
+        {
+            confirmation++;
+            printf("EVIDENCE %s TX_CONFIRM index=%u committed_offset=%lu\n",
+                   TestId, (unsigned)confirmation,
+                   (unsigned long)record->detail);
+        }
+    }
+}
 
 /** Capture each immutable Data or FC frame accepted by the fake CanIf. */
 Std_ReturnType CanIf_Transmit(PduIdType TxPduId,
@@ -105,6 +178,7 @@ void PduR_CanTpRxIndication(PduIdType RxNSduId,
     assert(Test_CopyRxCalls == ((Result == E_OK) ? 1U : 0U));
     assert(Test_RxReserved != 0U);
     Test_RxReserved = 0U;
+    Test_RxReady = (uint8_t)((Result == E_OK) ? 1U : 0U);
     Test_RxFinalCalls++;
     Test_RxFinalResult = Result;
 }
@@ -129,6 +203,8 @@ static void Test_Reset(void)
     Test_RxFinalResult = E_NOT_OK;
     Test_RxLength = 0U;
     Test_RxReserved = 0U;
+    Test_RxReady = 0U;
+    Test_InjectedCtsCount = 0U;
     assert(CanTp_Init() == E_OK);
 }
 
@@ -137,6 +213,7 @@ static void Test_InjectCts(void)
 {
     uint8_t bytes[8] = {0x30U, 0x04U, 0x05U, 0U, 0U, 0U, 0U, 0U};
     PduInfoType frame = {bytes, sizeof(bytes)};
+    Test_InjectedCtsCount++;
     CanTp_RxIndication(CANTP_RX_NPDU_FC, &frame);
 }
 
@@ -206,6 +283,7 @@ static void Test_TxVectors(void)
                                      0x02U, 0x03U, 0x04U, 0x00U};
         assert(memcmp(Test_Frames[0].bytes, expected, sizeof(expected)) == 0);
     }
+    Test_PrintTxEvidence("T01");
 
     Test_Reset();
     for (index = 0U; index < 20U; index++) { Test_Source[index] = index; }
@@ -224,6 +302,7 @@ static void Test_TxVectors(void)
         assert((Test_Frames[2].tick - Test_Frames[1].tick) >=
                CANTP_STMIN_MS);
     }
+    Test_PrintTxEvidence("T02");
 
     Test_Reset();
     for (index = 0U; index < 62U; index++) { Test_Source[index] = index; }
@@ -247,6 +326,18 @@ static void Test_TxVectors(void)
         }
     }
     assert(Test_Frames[8].bytes[7] == 0x3DU);
+    Test_PrintTxEvidence("T03");
+    printf("EVIDENCE T04 CTS_COUNT=%u\n",
+           (unsigned)Test_InjectedCtsCount);
+    for (index = 1U; index < 9U; index++)
+    {
+        uint32_t delta = (index == 1U) ? 0U :
+            (Test_Frames[index].tick - Test_Frames[index - 1U].tick);
+        printf("EVIDENCE T04 CF%u request_tick=%lu delta_from_prior_cf=%lu\n",
+               (unsigned)index,
+               (unsigned long)Test_Frames[index].tick,
+               (unsigned long)delta);
+    }
 }
 
 /** Confirm each generated CTS before injecting the next CF block. */
@@ -266,7 +357,8 @@ static void Test_ConfirmNewFcFrames(uint8_t *Processed)
 }
 
 /** Inject one complete receive vector and verify one final full-message copy. */
-static void Test_RunRx(const uint8_t Frames[][8], uint8_t FrameCount,
+static void Test_RunRx(const char *TestId,
+                       const uint8_t Frames[][8], uint8_t FrameCount,
                        const uint8_t *Expected, PduLengthType Length,
                        uint8_t ExpectedFcCount)
 {
@@ -288,6 +380,22 @@ static void Test_RunRx(const uint8_t Frames[][8], uint8_t FrameCount,
     assert(Test_RxFinalCalls == 1U && Test_RxFinalResult == E_OK);
     assert(Test_RxLength == Length);
     assert(memcmp(Test_RxData, Expected, Length) == 0);
+    assert(Test_RxReady != 0U);
+    printf("EVIDENCE %s RX_SUMMARY data_frames=%u fc_frames=%u "
+           "start_rx=%lu copy_rx=%lu rx_final_count=%lu rx_final_result=%u "
+           "length=%u reservation=%u ready=%u payload_match=1\n",
+           TestId, (unsigned)FrameCount, (unsigned)processedFc,
+           (unsigned long)Test_StartRxCalls,
+           (unsigned long)Test_CopyRxCalls,
+           (unsigned long)Test_RxFinalCalls,
+           (unsigned)Test_RxFinalResult, (unsigned)Test_RxLength,
+           (unsigned)Test_RxReserved, (unsigned)Test_RxReady);
+    for (index = 0U; index < processedFc; index++)
+    {
+        Test_PrintFrame(TestId, "FC_TX", index, &Test_Frames[index]);
+    }
+    printf("EVIDENCE %s RX_PAYLOAD first=%02X last=%02X\n",
+           TestId, Test_RxData[0], Test_RxData[Length - 1U]);
 }
 
 /** Check reassembly, block CTS count and final padding handling for T01-T03. */
@@ -322,9 +430,9 @@ static void Test_RxVectors(void)
         {0U,1U,2U,3U,4U,5U,6U,7U,8U,9U,10U,11U,12U,13U,14U,15U,16U,17U,18U,19U};
 
     for (index = 0U; index < 62U; index++) { expected62[index] = index; }
-    Test_RunRx(sf, 1U, expected5, 5U, 0U);
-    Test_RunRx(ff20, 3U, expected20, 20U, 1U);
-    Test_RunRx(ff62, 9U, expected62, 62U, 2U);
+    Test_RunRx("T01", sf, 1U, expected5, 5U, 0U);
+    Test_RunRx("T02", ff20, 3U, expected20, 20U, 1U);
+    Test_RunRx("T03", ff62, 9U, expected62, 62U, 2U);
 }
 
 int main(void)

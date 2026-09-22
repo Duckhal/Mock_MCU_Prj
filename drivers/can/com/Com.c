@@ -94,7 +94,7 @@ static const Com_SignalConfigType *Com_FindSignal(PduIdType id)
 
 /* Resolve Signal -> Group -> one I-PDU without assuming IDs are indices. */
 static const Com_IPduConfigType *Com_ResolveSignal(
-    PduIdType id, const Com_SignalConfigType *signalOut, uint16_t *indexOut)
+    PduIdType id, const Com_SignalConfigType **signalOut, uint16_t *indexOut)
 {
     const Com_SignalConfigType *signal = Com_FindSignal(id);
     const Com_IPduConfigType *ipdu = NULL;
@@ -430,5 +430,7 @@ void Com_TxConfirmation(PduIdType ComTxPduId)
 {
     const Com_IPduConfigType *p = Com_FindIPdu(ComTxPduId, NULL);
     if ((Com_Initialized != 0U) && (p != NULL) && (p->direction == COM_IPDU_TX))
-    { Com_TxConfirmationCount++; }
+    {
+        Com_TxConfirmationCount++;
+    }
 }

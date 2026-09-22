@@ -14,6 +14,7 @@ typedef enum
     APP_INIT_ERROR_NONE = 0,
     APP_INIT_ERROR_GPIO,
     APP_INIT_ERROR_UART,
+    APP_INIT_ERROR_UART_BUFFER,
     APP_INIT_ERROR_HARDWARE_NOT_READY,
     APP_INIT_ERROR_NODE
 } App_InitErrorType;
@@ -25,7 +26,11 @@ typedef enum
     APP_RUNTIME_STATE_CORRUPTION,
     APP_RUNTIME_COM_SEND_ERROR,
     APP_RUNTIME_COM_RECEIVE_ERROR,
-    APP_RUNTIME_CANTP_RECEIVE_ERROR
+    APP_RUNTIME_CANTP_RECEIVE_ERROR,
+    APP_RUNTIME_CANTP_TRANSMIT_ERROR,
+    APP_RUNTIME_CANTP_ECHO_TIMEOUT,
+    APP_RUNTIME_CANTP_ECHO_MISMATCH,
+    APP_RUNTIME_UART_ECHO_ERROR
 } App_RuntimeStatusType;
 
 extern volatile App_InitErrorType g_AppInitError;
@@ -40,6 +45,12 @@ extern volatile uint32_t g_AppCanTpTxRequests;
 extern volatile uint32_t g_AppCanTpTxRejects;
 extern volatile uint32_t g_AppCanTpRxMessages;
 extern volatile uint32_t g_AppCanTpRxErrors;
+extern volatile uint32_t g_AppUartRxBytes;
+extern volatile uint32_t g_AppUartRxOverflows;
+extern volatile uint32_t g_AppCanTpEchoRequests;
+extern volatile uint32_t g_AppCanTpEchoResponses;
+extern volatile uint32_t g_AppCanTpEchoMismatches;
+extern volatile uint8_t g_AppCanTpEchoPending;
 extern volatile uint32_t g_AppStateCorruptionCount;
 extern volatile uint32_t g_AppStateErrorMask;
 extern volatile uint32_t g_AppLastInvalidTxCommand;

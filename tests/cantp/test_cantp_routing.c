@@ -110,15 +110,54 @@ static void Test_ApplicationTxRoute(void)
     assert(NodeApp_LastTxResult == E_OK);
 }
 
+/** Prove one complete payload becomes READY before its final indication. */
+static void Test_OneReadyMessage(const char *TestId,
+                                 const uint8_t *Payload,
+                                 PduLengthType Length)
+{
+    uint8_t output[NODE_APP_MAX_NSDU_LENGTH];
+    PduLengthType outputLength = 0U;
+
+    assert(NodeApp_Init() == E_OK);
+    assert(PduR_CanTpStartOfReception(CANTP_RX_NSDU, Length) == BUFREQ_OK);
+    assert(NodeApp_GetReadyCount() == 0U);
+    assert(PduR_CanTpCopyRxData(CANTP_RX_NSDU, Payload, Length) == BUFREQ_OK);
+    assert(NodeApp_GetReadyCount() == 1U);
+    assert(NodeApp_RxIndicationCount == 0U);
+    PduR_CanTpRxIndication(CANTP_RX_NSDU, E_OK);
+    assert(NodeApp_RxIndicationCount == 1U);
+    assert(NodeApp_LastRxResult == E_OK);
+    assert(NodeApp_Receive(output, sizeof(output), &outputLength) == E_OK);
+    assert(outputLength == Length);
+    assert(memcmp(output, Payload, Length) == 0);
+    assert(NodeApp_GetReadyCount() == 0U);
+    printf("EVIDENCE %s QUEUE ready_before_final=1 "
+           "rx_indication_before_final=0 rx_indication_after_final=1 "
+           "length=%u payload_match=1 ready_after_consume=0\n",
+           TestId, (unsigned)Length);
+}
+
 /** Verify RESERVED data becomes READY before the final Rx indication. */
 static void Test_ApplicationRxQueue(void)
 {
     uint8_t payload[62];
+    uint8_t payload20[20];
+    uint8_t payload5[5];
     uint8_t secondPayload[3] = {0xA1U, 0xA2U, 0xA3U};
     uint8_t output[62];
     PduLengthType length = 0U;
     uint8_t index;
-    for (index = 0U; index < sizeof(payload); index++) { payload[index] = index; }
+    for (index = 0U; index < sizeof(payload); index++)
+    {
+        payload[index] = index;
+        if (index < sizeof(payload20)) { payload20[index] = index; }
+        if (index < sizeof(payload5)) { payload5[index] = index; }
+    }
+
+    Test_OneReadyMessage("T01", payload5, sizeof(payload5));
+    Test_OneReadyMessage("T02", payload20, sizeof(payload20));
+    Test_OneReadyMessage("T03", payload, sizeof(payload));
+    assert(NodeApp_Init() == E_OK);
 
     assert(PduR_CanTpStartOfReception(CANTP_RX_NSDU,
                                       CANTP_MAX_NSDU_LENGTH + 1U) ==
@@ -130,9 +169,18 @@ static void Test_ApplicationRxQueue(void)
                                  sizeof(payload)) == BUFREQ_OK);
     assert(NodeApp_GetReadyCount() == 1U);
     assert(NodeApp_RxIndicationCount == 0U);
+    printf("EVIDENCE QUEUE BEFORE_FINAL state=READY ready_count=%u "
+           "rx_indication_count=%lu length=62\n",
+           (unsigned)NodeApp_GetReadyCount(),
+           (unsigned long)NodeApp_RxIndicationCount);
     PduR_CanTpRxIndication(CANTP_RX_NSDU, E_OK);
     assert(NodeApp_RxIndicationCount == 1U);
     assert(NodeApp_LastRxResult == E_OK);
+    printf("EVIDENCE QUEUE AFTER_FINAL ready_count=%u "
+           "rx_indication_count=%lu result=%u\n",
+           (unsigned)NodeApp_GetReadyCount(),
+           (unsigned long)NodeApp_RxIndicationCount,
+           (unsigned)NodeApp_LastRxResult);
 
     assert(PduR_CanTpStartOfReception(CANTP_RX_NSDU,
                                       sizeof(secondPayload)) == BUFREQ_OK);
@@ -141,6 +189,8 @@ static void Test_ApplicationRxQueue(void)
     PduR_CanTpRxIndication(CANTP_RX_NSDU, E_OK);
     assert(NodeApp_GetReadyCount() == 2U);
     assert(PduR_CanTpStartOfReception(CANTP_RX_NSDU, 1U) == BUFREQ_E_OVFL);
+    printf("EVIDENCE QUEUE FULL ready_count=%u overflow_result=%u\n",
+           (unsigned)NodeApp_GetReadyCount(), (unsigned)BUFREQ_E_OVFL);
 
     assert(NodeApp_Receive(output, sizeof(output), &length) == E_OK);
     assert(length == sizeof(payload));
@@ -149,6 +199,8 @@ static void Test_ApplicationRxQueue(void)
     assert(length == sizeof(secondPayload));
     assert(memcmp(output, secondPayload, sizeof(secondPayload)) == 0);
     assert(NodeApp_GetReadyCount() == 0U);
+    printf("EVIDENCE QUEUE CONSUMED ready_count=%u fifo_payload_match=1\n",
+           (unsigned)NodeApp_GetReadyCount());
 }
 
 /** Verify separate Data and FC L-PDUs map to their configured N-PDU handles. */

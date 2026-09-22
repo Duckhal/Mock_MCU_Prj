@@ -10,6 +10,7 @@
 #include "../../src/main.c"
 #undef main
 #include "../../app/app.c"
+#include "../../middlewares/ring_buffer.c"
 
 static jmp_buf Test_StopPoint;
 static uint32_t Test_Tick;
@@ -28,6 +29,7 @@ static uint32_t Test_WriteCount;
 static uint32_t Test_ReadCount;
 static uint32_t Test_CanTpCount;
 static uint32_t Test_CanTpLoopbackCount;
+static uint32_t Test_CanTpLoopbackEnableCount;
 static uint32_t Test_PduRInitCount;
 static uint32_t Test_NodeReadyCount;
 static uint32_t Test_NodeTransmitCount;
@@ -38,8 +40,13 @@ static uint8_t Test_NodeTxData[NODE_APP_MAX_NSDU_LENGTH];
 static char Test_JumpEvents[16];
 static uint8_t Test_JumpEventCount;
 static char Test_LastUart[64];
+static UART_RxCallback_t Test_UartRxCallback;
+static uint8_t Test_UartRawTx[256];
+static uint16_t Test_UartRawTxLength;
 
 volatile uint32_t Com_RxIndicationCount;
+volatile uint32_t NodeApp_TxConfirmationCount;
+volatile Std_ReturnType NodeApp_LastTxResult;
 
 uint32_t Com_GetRxIndicationCount(void)
 { return Com_RxIndicationCount; }
@@ -108,6 +115,12 @@ Std_ReturnType PduR_Init(void)
 { Test_PduRInitCount++; return E_OK; }
 Std_ReturnType CanTpLoopbackTest_Run(void)
 { Test_CanTpLoopbackCount++; return E_OK; }
+Std_ReturnType CanTpLoopbackTest_SetEnabled(uint8_t enable)
+{
+    assert(enable <= 1U);
+    Test_CanTpLoopbackEnableCount++;
+    return E_OK;
+}
 Std_ReturnType Com_Init(void) { Com_RxIndicationCount = 0U; return E_OK; }
 
 uint8_t NodeApp_GetReadyCount(void)
@@ -183,12 +196,37 @@ void Can_MainFunction_Read(void)
 UART_Status_t LPUART1_Init(uint32_t baud)
 { assert(baud == 115200U); return UART_STATUS_OK; }
 
+void LPUART1_RegisterCallbacks(UART_RxCallback_t rxCb,
+                               UART_TxCallback_t txCb)
+{
+    assert(txCb == NULL);
+    Test_UartRxCallback = rxCb;
+}
+
+UART_Status_t LPUART1_SendChar_Blocking(char value)
+{
+    assert(Test_UartRawTxLength < sizeof(Test_UartRawTx));
+    Test_UartRawTx[Test_UartRawTxLength++] = (uint8_t)value;
+    return UART_STATUS_OK;
+}
+
 UART_Status_t LPUART1_SendString_Blocking(const char *line)
 {
     size_t length = strlen(line);
     assert(length < sizeof(Test_LastUart));
     memcpy(Test_LastUart, line, length + 1U);
     return UART_STATUS_OK;
+}
+
+/** Inject raw PC bytes through the registered production UART callback. */
+void Test_InjectUart(const uint8_t *data, uint16_t length)
+{
+    uint16_t index;
+    assert(data != NULL && Test_UartRxCallback != NULL);
+    for (index = 0U; index < length; index++)
+    {
+        Test_UartRxCallback(data[index]);
+    }
 }
 
 uint32_t Driver_SysTick_Init(uint32_t frequency, Driver_SysTick_Callback_t callback)

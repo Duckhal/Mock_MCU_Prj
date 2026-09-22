@@ -1,0 +1,55 @@
+param(
+    [string]$HostCompiler = 'gcc',
+    [string]$ArmCompiler = 'E:/NXP/S32DS/S32DS/build_tools/gcc_v6.3/gcc-6.3-arm32-eabi/bin/arm-none-eabi-gcc.exe'
+)
+
+$ErrorActionPreference = 'Stop'
+$taskRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+$taskOutput = Join-Path $taskRoot 'build/uart_cantp_echo'
+$taskLog = Join-Path $taskOutput 'verification.log'
+New-Item -ItemType Directory -Force -Path $taskOutput | Out-Null
+
+'UART CanTp echo verification' | Tee-Object -FilePath $taskLog
+$taskTests = @(
+    (Join-Path $PSScriptRoot 'test_app.c'),
+    (Join-Path $PSScriptRoot 'test_buttons.c'),
+    (Join-Path $PSScriptRoot 'test_uart_cantp_echo.c'),
+    (Join-Path $PSScriptRoot 'test_uart_cantp_echo_timeout.c'),
+    (Join-Path $taskRoot 'tests/com_stack/test_main_scheduler.c')
+)
+
+foreach ($taskTest in $taskTests) {
+    $taskName = [IO.Path]::GetFileNameWithoutExtension($taskTest)
+    $taskExe = Join-Path $taskOutput ($taskName + '.exe')
+    & $HostCompiler -std=c99 -Wall -Wextra -Werror `
+        "-I$(Join-Path $taskRoot 'include')" $taskTest -o $taskExe 2>&1 |
+        Tee-Object -FilePath $taskLog -Append
+    if ($LASTEXITCODE -ne 0) {
+        throw "Host compilation failed for ${taskTest}: $LASTEXITCODE"
+    }
+    & $taskExe 2>&1 | Tee-Object -FilePath $taskLog -Append
+    if ($LASTEXITCODE -ne 0) {
+        throw "Host test failed for ${taskTest}: $LASTEXITCODE"
+    }
+}
+
+$taskArmSources = @(
+    (Join-Path $taskRoot 'app/app.c'),
+    (Join-Path $taskRoot 'src/main.c'),
+    (Join-Path $taskRoot 'src/cantp_loopback_test.c'),
+    (Join-Path $taskRoot 'drivers/can/com/Com.c')
+)
+foreach ($taskSource in $taskArmSources) {
+    $taskObjectName = ($taskSource.Substring($taskRoot.Length + 1) `
+        -replace '[\\/]', '_' -replace '\.c$', '.o')
+    $taskObject = Join-Path $taskOutput $taskObjectName
+    & $ArmCompiler -std=c99 -mcpu=cortex-m4 -mthumb -Wall -Wextra -Werror `
+        -g3 "-I$(Join-Path $taskRoot 'include')" -c $taskSource `
+        -o $taskObject 2>&1 | Tee-Object -FilePath $taskLog -Append
+    if ($LASTEXITCODE -ne 0) {
+        throw "ARM compilation failed for ${taskSource}: $LASTEXITCODE"
+    }
+}
+
+'PASS: UART CanTp echo host tests and strict ARM compilation completed.' |
+    Tee-Object -FilePath $taskLog -Append

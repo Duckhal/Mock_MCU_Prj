@@ -47,7 +47,7 @@ static uint8_t CanTpLoopback_WaitMcr(uint32_t Mask, uint32_t Expected)
 }
 
 /** Change internal loopback only while CAN0 acknowledges Freeze mode. */
-static uint8_t CanTpLoopback_SetMode(uint8_t Enable)
+Std_ReturnType CanTpLoopbackTest_SetEnabled(uint8_t Enable)
 {
     if (g_CanTpLoopbackTestResult.status != CANTP_LOOPBACK_FAIL)
     {
@@ -61,7 +61,7 @@ static uint8_t CanTpLoopback_SetMode(uint8_t Enable)
                               CAN_MCR_FRZACK_MASK) == 0U)
     {
         CanTpLoopback_Fail(CANTP_LOOPBACK_ERROR_FREEZE_ENTRY);
-        return 0U;
+        return E_NOT_OK;
     }
 
     if (Enable != 0U)
@@ -80,23 +80,23 @@ static uint8_t CanTpLoopback_SetMode(uint8_t Enable)
                               0U) == 0U)
     {
         CanTpLoopback_Fail(CANTP_LOOPBACK_ERROR_FREEZE_EXIT);
-        return 0U;
+        return E_NOT_OK;
     }
     if ((Enable != 0U) &&
         (((CAN0->CTRL1 & CAN_CTRL1_LPB_MASK) == 0U) ||
          ((CAN0->MCR & CAN_MCR_SRXDIS_MASK) != 0U)))
     {
         CanTpLoopback_Fail(CANTP_LOOPBACK_ERROR_MODE);
-        return 0U;
+        return E_NOT_OK;
     }
     if ((Enable == 0U) &&
         (((CAN0->CTRL1 & CAN_CTRL1_LPB_MASK) != 0U) ||
          ((CAN0->MCR & CAN_MCR_SRXDIS_MASK) == 0U)))
     {
         CanTpLoopback_Fail(CANTP_LOOPBACK_ERROR_MODE);
-        return 0U;
+        return E_NOT_OK;
     }
-    return 1U;
+    return E_OK;
 }
 
 /** Initialize the observable result and deterministic increasing payload. */
@@ -190,7 +190,7 @@ Std_ReturnType CanTpLoopbackTest_Run(void)
     {
         payload[index] = g_CanTpLoopbackTestResult.expectedData[index];
     }
-    if (CanTpLoopback_SetMode(1U) == 0U)
+    if (CanTpLoopbackTest_SetEnabled(1U) != E_OK)
     {
         return E_NOT_OK;
     }
@@ -203,7 +203,7 @@ Std_ReturnType CanTpLoopbackTest_Run(void)
     if (g_CanTpLoopbackTestResult.transmitResult != E_OK)
     {
         CanTpLoopback_Fail(CANTP_LOOPBACK_ERROR_TRANSMIT);
-        (void)CanTpLoopback_SetMode(0U);
+        (void)CanTpLoopbackTest_SetEnabled(0U);
         return E_NOT_OK;
     }
 
@@ -268,7 +268,7 @@ Std_ReturnType CanTpLoopbackTest_Run(void)
         (void)CanTpLoopback_Verify();
     }
 
-    if (CanTpLoopback_SetMode(0U) == 0U)
+    if (CanTpLoopbackTest_SetEnabled(0U) != E_OK)
     {
         return E_NOT_OK;
     }

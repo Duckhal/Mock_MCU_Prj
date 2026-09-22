@@ -11,6 +11,7 @@ int main(void)
     uint8_t rxData[5] = {0xA1U, 0xA2U, 0xA3U, 0xA4U, 0xA5U};
 
     (void)Test_RunApp;
+    (void)Test_InjectUart;
     assert(App_MainFunction(1U) == E_NOT_OK);
     assert(g_AppRuntimeStatus == APP_RUNTIME_NOT_INITIALIZED);
     assert(App_Init() == E_NOT_OK);

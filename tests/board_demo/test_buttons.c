@@ -5,6 +5,7 @@
 /** Verify SW2 changes roles, SW3 updates COM and only Rx applies LED data. */
 int main(void)
 {
+    (void)Test_InjectUart;
     Test_RxAt = 145U;
     Test_RxValue = 2U;
     Test_RunApp(161U);
@@ -14,6 +15,7 @@ int main(void)
     assert(g_AppMainFunctionCount == 160U);
     assert(Test_PduRInitCount == 1U);
     assert(Test_CanTpLoopbackCount == 1U);
+    assert(Test_CanTpLoopbackEnableCount == 1U);
     assert(Test_WriteCount == 160U && Test_ReadCount == 160U);
     assert(Test_SendCount == 2U && g_AppTxSignalUpdates == 2U);
     assert(Test_SentCommands[0] == 0U && Test_SentCommands[1] == 1U);

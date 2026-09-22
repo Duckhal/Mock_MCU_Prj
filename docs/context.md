@@ -1,5 +1,39 @@
 # Project Context
 
+## CanTp Phase 1-2 submission evidence (2026-09-22)
+
+- `evidence/cantp_phase2/` contains individual Acceptance Matrix reports for
+  T01-T08 and T13 plus supplemental FC-retry/N_Ar evidence. Each report maps
+  setup, expected behavior, actual frame/timer/callback/queue observations and
+  result to checked-in raw logs.
+- The CanTp host fixtures now print deterministic `EVIDENCE` records for all
+  Data/FC bytes, 1 ms ticks, committed offsets, retry attempts, timer
+  boundaries, abort reasons, callback counts and NodeApp READY transitions.
+- `tests/cantp/generate_evidence.ps1` reruns the assertions and strict ARM
+  compile, then regenerates protocol/routing/full logs and compiler/source-hash
+  metadata. The evidence is host simulation, not a physical CAN capture.
+
+## Interactive UART-to-CanTp loopback (2026-09-22)
+
+- In Rx mode, `app/app.c` now receives LPUART1 bytes through an ISR-safe ring
+  buffer. A 20 ms idle gap or 62 accumulated bytes closes one chunk. The app
+  sends that chunk through NodeApp -> PduR -> CanTp -> CanIf -> CanDrv and
+  writes the exact reassembled bytes back to UART only after
+  `NodeApp_Receive()` succeeds and the payload comparison passes.
+- The input stream preserves every byte, including CR/LF. A 128-byte UART
+  ring buffers input arriving during an active CanTp transfer; overflow,
+  request, response, mismatch and pending counters are debugger-visible.
+  Missing loopback response fails after 500 ms instead of remaining pending.
+- `SYSTEM_ENABLE_UART_CANTP_LOOPBACK` in `src/main.c` defaults to `1U` and
+  leaves CAN0 internal loopback enabled after the startup self-test. Set it to
+  `0U` before testing the external two-board CAN bus.
+- `tests/board_demo/run_tests.ps1` passes application/button regressions,
+  raw UART echo, 62-byte boundary, Tx-mode ignore, 500 ms timeout, scheduler
+  ordering and strict ARM compilation. The full firmware ELF links with zero
+  undefined symbols at `build/uart_cantp_echo/Mock_MCU_Prj_Uart_CanTp_Echo.elf`
+  (text 28496, data 1072, bss 6776). Physical-board execution remains
+  unverified.
+
 ## CanTp Phase 2 implementation (2026-09-21)
 
 - `drivers/can/cantp/Cantp.c` now retries rejected Data and FC N-PDUs on
