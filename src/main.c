@@ -12,11 +12,11 @@
 #include <stddef.h>
 
 #ifndef SYSTEM_RUN_CANTP_LOOPBACK_TEST
-#define SYSTEM_RUN_CANTP_LOOPBACK_TEST (1U)
+#define SYSTEM_RUN_CANTP_LOOPBACK_TEST (0U)
 #endif
 
 #ifndef SYSTEM_ENABLE_UART_CANTP_LOOPBACK
-#define SYSTEM_ENABLE_UART_CANTP_LOOPBACK (1U)
+#define SYSTEM_ENABLE_UART_CANTP_LOOPBACK (0U)
 #endif
 
 typedef enum
@@ -102,6 +102,10 @@ int main(void)
 
 #if SYSTEM_ENABLE_UART_CANTP_LOOPBACK != 0U
     if (CanTpLoopbackTest_SetEnabled(1U) != E_OK)
+    {
+        System_Fail(SYSTEM_CANTP_LOOPBACK_FAILED);
+    }
+    if (App_SetCanTpLoopbackMode(1U) != E_OK)
     {
         System_Fail(SYSTEM_CANTP_LOOPBACK_FAILED);
     }

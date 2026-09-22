@@ -14,8 +14,8 @@ int main(void)
     assert(g_SystemProcessedTicks == 160U);
     assert(g_AppMainFunctionCount == 160U);
     assert(Test_PduRInitCount == 1U);
-    assert(Test_CanTpLoopbackCount == 1U);
-    assert(Test_CanTpLoopbackEnableCount == 1U);
+    assert(Test_CanTpLoopbackCount == 0U);
+    assert(Test_CanTpLoopbackEnableCount == 0U);
     assert(Test_WriteCount == 160U && Test_ReadCount == 160U);
     assert(Test_SendCount == 2U && g_AppTxSignalUpdates == 2U);
     assert(Test_SentCommands[0] == 0U && Test_SentCommands[1] == 1U);

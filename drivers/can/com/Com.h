@@ -45,6 +45,9 @@ Std_ReturnType Com_ReceiveSignal(PduIdType SignalId, void *SignalDataPtr);
 /* Return the number of valid Rx I-PDU indications since Com_Init(). */
 uint32_t Com_GetRxIndicationCount(void);
 
+/* Return how many received frames carried U=1 for one Rx Signal. */
+uint32_t Com_GetRxSignalUpdateCount(PduIdType SignalId);
+
 /* Run the non-blocking Tx scheduler once per 1 ms. */
 void Com_MainFunctionTx(void);
 

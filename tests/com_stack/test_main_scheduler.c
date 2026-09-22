@@ -12,7 +12,7 @@ int main(void)
     assert(g_SystemProcessedTicks == 70U);
     assert(g_AppMainFunctionCount == 70U);
     assert(Test_PduRInitCount == 1U);
-    assert(Test_CanTpLoopbackCount == 1U);
+    assert(Test_CanTpLoopbackCount == 0U);
     assert(Test_WriteCount == 70U && Test_ReadCount == 70U &&
            Test_CanTpCount == 70U);
     assert(Test_SchedulerCount == 47U); /* Tx ticks 25 through 71. */

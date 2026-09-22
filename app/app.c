@@ -11,7 +11,7 @@
 #define APP_UART_BAUD                (115200U)
 #define APP_UART_RX_RING_CAPACITY    (128U)
 #define APP_UART_MESSAGE_GAP_TICKS   (20U)
-#define APP_CANTP_ECHO_TIMEOUT_TICKS (500U)
+#define APP_CANTP_TX_TIMEOUT_TICKS   (500U)
 #define APP_DEBOUNCE_TICKS           (20U)
 #define APP_LED_COMMAND_MAX          (3U)
 
@@ -29,10 +29,12 @@ volatile uint32_t g_AppCanTpRxMessages;
 volatile uint32_t g_AppCanTpRxErrors;
 volatile uint32_t g_AppUartRxBytes;
 volatile uint32_t g_AppUartRxOverflows;
-volatile uint32_t g_AppCanTpEchoRequests;
-volatile uint32_t g_AppCanTpEchoResponses;
-volatile uint32_t g_AppCanTpEchoMismatches;
-volatile uint8_t g_AppCanTpEchoPending;
+volatile uint32_t g_AppCanTpTxCompleted;
+volatile uint32_t g_AppCanTpTxFailures;
+volatile uint32_t g_AppCanTpRxUartDeliveries;
+volatile uint32_t g_AppCanTpRxIgnored;
+volatile uint8_t g_AppCanTpTxPending;
+volatile uint8_t g_AppCanTpInternalLoopback;
 volatile uint32_t g_AppStateCorruptionCount;
 volatile uint32_t g_AppStateErrorMask;
 volatile uint32_t g_AppLastInvalidTxCommand;
@@ -42,7 +44,7 @@ uint8_t g_AppLastCanTpRxData[APP_MAX_LARGE_MESSAGE_LENGTH];
 typedef char App_NodeLengthMustMatch[
     (APP_MAX_LARGE_MESSAGE_LENGTH == NODE_APP_MAX_NSDU_LENGTH) ? 1 : -1];
 
-static uint32_t App_LastRxCount;
+static uint32_t App_LastLedUpdateCount;
 static uint32_t App_Sw2ChangedAt;
 static uint32_t App_Sw3ChangedAt;
 static uint32_t App_NextCommand;
@@ -56,11 +58,9 @@ static RingBuffer_t App_UartRxRing;
 static uint8_t App_UartRxRingStorage[APP_UART_RX_RING_CAPACITY];
 static uint8_t App_UartMessage[APP_MAX_LARGE_MESSAGE_LENGTH];
 static PduLengthType App_UartMessageLength;
-static uint8_t App_EchoExpected[APP_MAX_LARGE_MESSAGE_LENGTH];
-static PduLengthType App_EchoExpectedLength;
 static uint32_t App_UartLastByteTick;
-static uint32_t App_EchoStartedAtTick;
-static uint32_t App_EchoTxConfirmationBaseline;
+static uint32_t App_CanTpTxStartedAtTick;
+static uint32_t App_CanTpTxConfirmationBaseline;
 
 static const char *const App_TxMessages[4] =
 {
@@ -94,7 +94,8 @@ static Std_ReturnType App_ValidateState(void)
         errorMask |= APP_STATE_ERROR_SWITCH;
     }
     if ((App_HardwareReady > 1U) || (App_Initialized > 1U) ||
-        (g_AppModeTx > 1U) || (g_AppCanTpEchoPending > 1U))
+        (g_AppModeTx > 1U) || (g_AppCanTpTxPending > 1U) ||
+        (g_AppCanTpInternalLoopback > 1U))
     {
         errorMask |= APP_STATE_ERROR_LIFECYCLE;
     }
@@ -141,7 +142,7 @@ static void App_DiscardUartInput(void)
     App_UartLastByteTick = 0U;
 }
 
-/* Send one complete CanTp response to the PC without adding framing bytes. */
+/* Send one complete received CanTp N-SDU to the PC without framing bytes. */
 static Std_ReturnType App_SendUartBytes(const uint8_t *DataPtr,
                                        PduLengthType Length)
 {
@@ -151,7 +152,7 @@ static Std_ReturnType App_SendUartBytes(const uint8_t *DataPtr,
         if (LPUART1_SendChar_Blocking((char)DataPtr[index]) != UART_STATUS_OK)
         {
             g_AppUartErrors++;
-            g_AppRuntimeStatus = APP_RUNTIME_UART_ECHO_ERROR;
+            g_AppRuntimeStatus = APP_RUNTIME_UART_TX_ERROR;
             return E_NOT_OK;
         }
     }
@@ -178,7 +179,8 @@ static void App_ApplyMode(void)
     }
     else
     {
-        App_LastRxCount = Com_GetRxIndicationCount();
+        App_LastLedUpdateCount =
+            Com_GetRxSignalUpdateCount(COM_SIGNAL_RX_LED_COMMAND);
         App_ReportUart("MODE RX WAIT CAN\r\n");
     }
 }
@@ -242,17 +244,18 @@ static Std_ReturnType App_ProcessCommandSwitch(uint32_t Tick,
 /* Consume a new COM LED command and apply it only while in Rx mode. */
 static Std_ReturnType App_ProcessComRx(void)
 {
-    uint32_t indicationCount = Com_GetRxIndicationCount();
+    uint32_t updateCount =
+        Com_GetRxSignalUpdateCount(COM_SIGNAL_RX_LED_COMMAND);
 
     if (g_AppModeTx != 0U)
     {
-        App_LastRxCount = indicationCount;
+        App_LastLedUpdateCount = updateCount;
         return E_OK;
     }
-    if (indicationCount != App_LastRxCount)
+    if (updateCount != App_LastLedUpdateCount)
     {
         uint32_t command = 0U;
-        App_LastRxCount = indicationCount;
+        App_LastLedUpdateCount = updateCount;
         if (Com_ReceiveSignal(COM_SIGNAL_RX_LED_COMMAND, &command) != E_OK)
         {
             g_AppRuntimeStatus = APP_RUNTIME_COM_RECEIVE_ERROR;
@@ -280,7 +283,7 @@ static Std_ReturnType App_ProcessComRx(void)
     return E_OK;
 }
 
-/* Drain complete CanTp N-SDUs from NodeApp into application-owned storage. */
+/* Deliver every complete CanTp N-SDU to UART only on a receiver board. */
 static Std_ReturnType App_ProcessCanTpRx(void)
 {
     while (NodeApp_GetReadyCount() > 0U)
@@ -295,37 +298,63 @@ static Std_ReturnType App_ProcessCanTpRx(void)
         }
         g_AppLastCanTpRxLength = length;
         g_AppCanTpRxMessages++;
-        if (g_AppCanTpEchoPending != 0U)
+        if ((g_AppModeTx == 0U) || (g_AppCanTpInternalLoopback != 0U))
         {
-            if ((length != App_EchoExpectedLength) ||
-                (memcmp(g_AppLastCanTpRxData, App_EchoExpected,
-                        length) != 0))
+            if (App_SendUartBytes(g_AppLastCanTpRxData, length) != E_OK)
             {
-                g_AppCanTpEchoMismatches++;
-                g_AppCanTpEchoPending = 0U;
-                g_AppRuntimeStatus = APP_RUNTIME_CANTP_ECHO_MISMATCH;
                 return E_NOT_OK;
             }
-            if ((g_AppModeTx == 0U) &&
-                (App_SendUartBytes(g_AppLastCanTpRxData, length) != E_OK))
-            {
-                g_AppCanTpEchoPending = 0U;
-                return E_NOT_OK;
-            }
-            g_AppCanTpEchoResponses++;
-            g_AppCanTpEchoPending = 0U;
-            App_EchoExpectedLength = 0U;
+            g_AppCanTpRxUartDeliveries++;
+        }
+        else
+        {
+            g_AppCanTpRxIgnored++;
         }
     }
     return E_OK;
 }
 
-/* Build and submit UART stream chunks through the complete CanTp route. */
-static Std_ReturnType App_ProcessUartCanTpEcho(uint32_t Tick)
+/* Submit Tx-board UART chunks and wait for the local CanTp final result. */
+static Std_ReturnType App_ProcessUartCanTpTx(uint32_t Tick)
 {
     uint8_t byte;
 
-    if (g_AppModeTx != 0U)
+    if (g_AppCanTpTxPending != 0U)
+    {
+        if ((NodeApp_TxConfirmationCount !=
+             App_CanTpTxConfirmationBaseline))
+        {
+            g_AppCanTpTxPending = 0U;
+            if (NodeApp_LastTxResult != E_OK)
+            {
+                g_AppCanTpTxFailures++;
+                g_AppRuntimeStatus = APP_RUNTIME_CANTP_TRANSMIT_ERROR;
+                App_ReportUart("CANTP TX FAILED\r\n");
+                return E_OK;
+            }
+            g_AppCanTpTxCompleted++;
+            if ((g_AppRuntimeStatus == APP_RUNTIME_CANTP_TRANSMIT_ERROR) ||
+                (g_AppRuntimeStatus == APP_RUNTIME_CANTP_TX_TIMEOUT))
+            {
+                g_AppRuntimeStatus = APP_RUNTIME_OK;
+            }
+        }
+        else if ((uint32_t)(Tick - App_CanTpTxStartedAtTick) >=
+                 APP_CANTP_TX_TIMEOUT_TICKS)
+        {
+            g_AppCanTpTxPending = 0U;
+            g_AppCanTpTxFailures++;
+            g_AppRuntimeStatus = APP_RUNTIME_CANTP_TX_TIMEOUT;
+            App_ReportUart("CANTP TX TIMEOUT\r\n");
+            return E_OK;
+        }
+        if (g_AppCanTpTxPending != 0U)
+        {
+            return E_OK;
+        }
+    }
+
+    if ((g_AppModeTx == 0U) && (g_AppCanTpInternalLoopback == 0U))
     {
         App_DiscardUartInput();
         return E_OK;
@@ -339,27 +368,6 @@ static Std_ReturnType App_ProcessUartCanTpEcho(uint32_t Tick)
         App_UartLastByteTick = Tick;
     }
 
-    if (g_AppCanTpEchoPending != 0U)
-    {
-        if ((NodeApp_TxConfirmationCount !=
-             App_EchoTxConfirmationBaseline) &&
-            (NodeApp_LastTxResult != E_OK))
-        {
-            g_AppCanTpEchoPending = 0U;
-            g_AppRuntimeStatus = APP_RUNTIME_CANTP_TRANSMIT_ERROR;
-            return E_NOT_OK;
-        }
-        if ((uint32_t)(Tick - App_EchoStartedAtTick) >=
-            APP_CANTP_ECHO_TIMEOUT_TICKS)
-        {
-            g_AppCanTpEchoPending = 0U;
-            g_AppCanTpRxErrors++;
-            g_AppRuntimeStatus = APP_RUNTIME_CANTP_ECHO_TIMEOUT;
-            return E_NOT_OK;
-        }
-        return E_OK;
-    }
-
     if ((App_UartMessageLength == 0U) ||
         ((App_UartMessageLength < APP_MAX_LARGE_MESSAGE_LENGTH) &&
          ((uint32_t)(Tick - App_UartLastByteTick) <
@@ -368,19 +376,16 @@ static Std_ReturnType App_ProcessUartCanTpEcho(uint32_t Tick)
         return E_OK;
     }
 
-    App_EchoTxConfirmationBaseline = NodeApp_TxConfirmationCount;
+    App_CanTpTxConfirmationBaseline = NodeApp_TxConfirmationCount;
     if (App_SendLargeMessage(App_UartMessage,
                              App_UartMessageLength) != E_OK)
     {
         return E_OK;
     }
-    memcpy(App_EchoExpected, App_UartMessage, App_UartMessageLength);
-    App_EchoExpectedLength = App_UartMessageLength;
     App_UartMessageLength = 0U;
     App_UartLastByteTick = 0U;
-    App_EchoStartedAtTick = Tick;
-    g_AppCanTpEchoPending = 1U;
-    g_AppCanTpEchoRequests++;
+    App_CanTpTxStartedAtTick = Tick;
+    g_AppCanTpTxPending = 1U;
     return E_OK;
 }
 
@@ -439,19 +444,20 @@ Std_ReturnType App_Init(void)
     g_AppCanTpRxErrors = 0U;
     g_AppUartRxBytes = 0U;
     g_AppUartRxOverflows = 0U;
-    g_AppCanTpEchoRequests = 0U;
-    g_AppCanTpEchoResponses = 0U;
-    g_AppCanTpEchoMismatches = 0U;
-    g_AppCanTpEchoPending = 0U;
+    g_AppCanTpTxCompleted = 0U;
+    g_AppCanTpTxFailures = 0U;
+    g_AppCanTpRxUartDeliveries = 0U;
+    g_AppCanTpRxIgnored = 0U;
+    g_AppCanTpTxPending = 0U;
+    g_AppCanTpInternalLoopback = 0U;
     g_AppStateCorruptionCount = 0U;
     g_AppStateErrorMask = 0U;
     g_AppLastInvalidTxCommand = 0U;
     g_AppLastCanTpRxLength = 0U;
     memset(g_AppLastCanTpRxData, 0, sizeof(g_AppLastCanTpRxData));
     memset(App_UartMessage, 0, sizeof(App_UartMessage));
-    memset(App_EchoExpected, 0, sizeof(App_EchoExpected));
 
-    App_LastRxCount = 0U;
+    App_LastLedUpdateCount = 0U;
     App_Sw2ChangedAt = 0U;
     App_Sw3ChangedAt = 0U;
     App_NextCommand = 0U;
@@ -460,10 +466,9 @@ Std_ReturnType App_Init(void)
     App_Sw3Raw = 1U;
     App_Sw3Stable = 1U;
     App_UartMessageLength = 0U;
-    App_EchoExpectedLength = 0U;
     App_UartLastByteTick = 0U;
-    App_EchoStartedAtTick = 0U;
-    App_EchoTxConfirmationBaseline = 0U;
+    App_CanTpTxStartedAtTick = 0U;
+    App_CanTpTxConfirmationBaseline = 0U;
 
     if (RingBuffer_Init(&App_UartRxRing, App_UartRxRingStorage,
                         APP_UART_RX_RING_CAPACITY) != RING_BUFFER_OK)
@@ -479,7 +484,8 @@ Std_ReturnType App_Init(void)
         return E_NOT_OK;
     }
 
-    App_LastRxCount = Com_GetRxIndicationCount();
+    App_LastLedUpdateCount =
+        Com_GetRxSignalUpdateCount(COM_SIGNAL_RX_LED_COMMAND);
     App_ApplyMode();
     App_Initialized = 1U;
     return E_OK;
@@ -519,7 +525,7 @@ Std_ReturnType App_MainFunction(uint32_t Tick)
     {
         return E_NOT_OK;
     }
-    if (App_ProcessUartCanTpEcho(Tick) != E_OK)
+    if (App_ProcessUartCanTpTx(Tick) != E_OK)
     {
         return E_NOT_OK;
     }
@@ -532,12 +538,27 @@ uint8_t App_IsComTxEnabled(void)
     return (App_Initialized != 0U) ? g_AppModeTx : 0U;
 }
 
+/* Select the UART/CanTp self-echo fixture without changing the board role. */
+Std_ReturnType App_SetCanTpLoopbackMode(uint8_t Enabled)
+{
+    if ((App_Initialized == 0U) || (Enabled > 1U) ||
+        (g_AppCanTpTxPending != 0U))
+    {
+        return E_NOT_OK;
+    }
+    App_DiscardUartInput();
+    g_AppCanTpInternalLoopback = Enabled;
+    return E_OK;
+}
+
 /* Forward a validated application N-SDU to the NodeApp ownership layer. */
 Std_ReturnType App_SendLargeMessage(const uint8_t *DataPtr,
                                     PduLengthType Length)
 {
     g_AppCanTpTxRequests++;
-    if ((App_Initialized == 0U) || (DataPtr == NULL) || (Length == 0U) ||
+    if ((App_Initialized == 0U) ||
+        ((g_AppModeTx == 0U) && (g_AppCanTpInternalLoopback == 0U)) ||
+        (DataPtr == NULL) || (Length == 0U) ||
         (Length > APP_MAX_LARGE_MESSAGE_LENGTH) ||
         (NodeApp_Transmit(DataPtr, Length) != E_OK))
     {

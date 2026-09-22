@@ -17,6 +17,7 @@ static uint32_t Test_Tick;
 static uint32_t Test_StopAt;
 static uint32_t Test_RxAt;
 static uint32_t Test_RxValue;
+static uint32_t Test_RxSignalUpdateCount;
 static uint32_t Test_JumpAt;
 static uint8_t Test_RxInjected;
 static uint8_t Test_RxValid;
@@ -40,6 +41,7 @@ static uint8_t Test_NodeTxData[NODE_APP_MAX_NSDU_LENGTH];
 static char Test_JumpEvents[16];
 static uint8_t Test_JumpEventCount;
 static char Test_LastUart[64];
+static uint32_t Test_UartStringCount;
 static UART_RxCallback_t Test_UartRxCallback;
 static uint8_t Test_UartRawTx[256];
 static uint16_t Test_UartRawTxLength;
@@ -121,7 +123,18 @@ Std_ReturnType CanTpLoopbackTest_SetEnabled(uint8_t enable)
     Test_CanTpLoopbackEnableCount++;
     return E_OK;
 }
-Std_ReturnType Com_Init(void) { Com_RxIndicationCount = 0U; return E_OK; }
+Std_ReturnType Com_Init(void)
+{
+    Com_RxIndicationCount = 0U;
+    Test_RxSignalUpdateCount = 0U;
+    return E_OK;
+}
+
+uint32_t Com_GetRxSignalUpdateCount(PduIdType signalId)
+{
+    assert(signalId == COM_SIGNAL_RX_LED_COMMAND);
+    return Test_RxSignalUpdateCount;
+}
 
 uint8_t NodeApp_GetReadyCount(void)
 { return (uint8_t)Test_NodeReadyCount; }
@@ -190,6 +203,7 @@ void Can_MainFunction_Read(void)
         Test_RxInjected = 1U;
         Test_RxValid = 1U;
         Com_RxIndicationCount++;
+        Test_RxSignalUpdateCount++;
     }
 }
 
@@ -215,6 +229,7 @@ UART_Status_t LPUART1_SendString_Blocking(const char *line)
     size_t length = strlen(line);
     assert(length < sizeof(Test_LastUart));
     memcpy(Test_LastUart, line, length + 1U);
+    Test_UartStringCount++;
     return UART_STATUS_OK;
 }
 

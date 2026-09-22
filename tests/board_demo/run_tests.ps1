@@ -9,11 +9,13 @@ $taskOutput = Join-Path $taskRoot 'build/uart_cantp_echo'
 $taskLog = Join-Path $taskOutput 'verification.log'
 New-Item -ItemType Directory -Force -Path $taskOutput | Out-Null
 
-'UART CanTp echo verification' | Tee-Object -FilePath $taskLog
+'UART CanTp multi-board application verification' | Tee-Object -FilePath $taskLog
 $taskTests = @(
     (Join-Path $PSScriptRoot 'test_app.c'),
     (Join-Path $PSScriptRoot 'test_buttons.c'),
+    (Join-Path $PSScriptRoot 'test_com_update_filter.c'),
     (Join-Path $PSScriptRoot 'test_uart_cantp_echo.c'),
+    (Join-Path $PSScriptRoot 'test_uart_cantp_loopback_mode.c'),
     (Join-Path $PSScriptRoot 'test_uart_cantp_echo_timeout.c'),
     (Join-Path $taskRoot 'tests/com_stack/test_main_scheduler.c')
 )
@@ -51,5 +53,5 @@ foreach ($taskSource in $taskArmSources) {
     }
 }
 
-'PASS: UART CanTp echo host tests and strict ARM compilation completed.' |
+'PASS: UART CanTp multi-board host tests and strict ARM compilation completed.' |
     Tee-Object -FilePath $taskLog -Append

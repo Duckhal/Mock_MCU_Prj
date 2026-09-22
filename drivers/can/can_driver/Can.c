@@ -551,7 +551,7 @@ void Can_MainFunction_Write(void)
 
 /*
  * Poll MB9 once and deliver a standard Classical frame with its configured HRH.
- * Clear IFLAG before reading TIMER to unlock the MB, as required by the RM.
+ * Read TIMER to unlock the MB before clearing its W1C flag.
  * Do not force RX_EMPTY after servicing: hardware keeps the MB receivable.
  * The callback must consume/copy the local payload before returning.
  */
@@ -592,8 +592,8 @@ void Can_MainFunction_Read(void)
     id = CAN0->RAMn[CAN_RX_MB_BASE + 1U];
     words[0] = CAN0->RAMn[CAN_RX_MB_BASE + 2U];
     words[1] = CAN0->RAMn[CAN_RX_MB_BASE + 3U];
-    CAN0->IFLAG1 = CAN_RX_FLAG;
     (void)CAN0->TIMER;
+    CAN0->IFLAG1 = CAN_RX_FLAG;
 
     code = (cs & CAN_MB_CODE_MASK) >> CAN_MB_CODE_SHIFT;
     rxPdu.canId = (id >> CAN_STANDARD_ID_SHIFT) & CAN_STANDARD_ID_MAX;

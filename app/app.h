@@ -28,9 +28,8 @@ typedef enum
     APP_RUNTIME_COM_RECEIVE_ERROR,
     APP_RUNTIME_CANTP_RECEIVE_ERROR,
     APP_RUNTIME_CANTP_TRANSMIT_ERROR,
-    APP_RUNTIME_CANTP_ECHO_TIMEOUT,
-    APP_RUNTIME_CANTP_ECHO_MISMATCH,
-    APP_RUNTIME_UART_ECHO_ERROR
+    APP_RUNTIME_CANTP_TX_TIMEOUT,
+    APP_RUNTIME_UART_TX_ERROR
 } App_RuntimeStatusType;
 
 extern volatile App_InitErrorType g_AppInitError;
@@ -47,10 +46,12 @@ extern volatile uint32_t g_AppCanTpRxMessages;
 extern volatile uint32_t g_AppCanTpRxErrors;
 extern volatile uint32_t g_AppUartRxBytes;
 extern volatile uint32_t g_AppUartRxOverflows;
-extern volatile uint32_t g_AppCanTpEchoRequests;
-extern volatile uint32_t g_AppCanTpEchoResponses;
-extern volatile uint32_t g_AppCanTpEchoMismatches;
-extern volatile uint8_t g_AppCanTpEchoPending;
+extern volatile uint32_t g_AppCanTpTxCompleted;
+extern volatile uint32_t g_AppCanTpTxFailures;
+extern volatile uint32_t g_AppCanTpRxUartDeliveries;
+extern volatile uint32_t g_AppCanTpRxIgnored;
+extern volatile uint8_t g_AppCanTpTxPending;
+extern volatile uint8_t g_AppCanTpInternalLoopback;
 extern volatile uint32_t g_AppStateCorruptionCount;
 extern volatile uint32_t g_AppStateErrorMask;
 extern volatile uint32_t g_AppLastInvalidTxCommand;
@@ -69,7 +70,10 @@ Std_ReturnType App_MainFunction(uint32_t Tick);
 /** Return non-zero when the application permits periodic COM transmission. */
 uint8_t App_IsComTxEnabled(void);
 
-/** Submit one application-owned large message through NodeApp and CanTp. */
+/** Enable the single-board UART/CanTp echo fixture after CAN loopback starts. */
+Std_ReturnType App_SetCanTpLoopbackMode(uint8_t Enabled);
+
+/** Submit one Tx-board application message through NodeApp and CanTp. */
 Std_ReturnType App_SendLargeMessage(const uint8_t *DataPtr,
                                     PduLengthType Length);
 

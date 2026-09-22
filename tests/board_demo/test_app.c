@@ -18,14 +18,17 @@ int main(void)
     assert(g_AppInitError == APP_INIT_ERROR_HARDWARE_NOT_READY);
     assert(App_HardwareInit() == E_OK);
     assert(App_Init() == E_OK);
+    assert(App_SendLargeMessage(txData, sizeof(txData)) == E_NOT_OK);
+    g_AppModeTx = 1U;
     assert(App_SendLargeMessage(txData, sizeof(txData)) == E_OK);
     assert(Test_NodeTransmitCount == 1U);
     assert(Test_NodeTxLength == sizeof(txData));
     assert(memcmp(Test_NodeTxData, txData, sizeof(txData)) == 0);
 
     assert(App_SendLargeMessage(NULL, sizeof(txData)) == E_NOT_OK);
-    assert(g_AppCanTpTxRequests == 2U && g_AppCanTpTxRejects == 1U);
+    assert(g_AppCanTpTxRequests == 3U && g_AppCanTpTxRejects == 2U);
 
+    g_AppModeTx = 0U;
     memcpy(Test_NodeRxData, rxData, sizeof(rxData));
     Test_NodeRxLength = sizeof(rxData);
     Test_NodeReadyCount = 1U;
@@ -33,6 +36,9 @@ int main(void)
     assert(g_AppCanTpRxMessages == 1U && g_AppCanTpRxErrors == 0U);
     assert(g_AppLastCanTpRxLength == sizeof(rxData));
     assert(memcmp(g_AppLastCanTpRxData, rxData, sizeof(rxData)) == 0);
+    assert(g_AppCanTpRxUartDeliveries == 1U);
+    assert(Test_UartRawTxLength == sizeof(rxData));
+    assert(memcmp(Test_UartRawTx, rxData, sizeof(rxData)) == 0);
 
     App_NextCommand = 0x100U;
     assert(App_MainFunction(2U) == E_NOT_OK);

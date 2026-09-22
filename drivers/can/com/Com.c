@@ -15,6 +15,7 @@ typedef struct
 static uint8_t Com_Initialized;
 static uint8_t Com_Buffer[COM_NUM_IPDUS][COM_MAX_IPDU_LENGTH];
 static uint8_t Com_RxValid[COM_NUM_IPDUS];
+static uint32_t Com_RxSignalUpdateCount[COM_NUM_SIGNALS];
 static Com_TxRuntimeType Com_TxRuntime[COM_NUM_IPDUS];
 volatile uint32_t Com_TxConfirmationCount;
 volatile uint32_t Com_RxIndicationCount;
@@ -278,6 +279,7 @@ Std_ReturnType Com_Init(void)
     }
     memset(Com_Buffer, 0, sizeof(Com_Buffer));
     memset(Com_RxValid, 0, sizeof(Com_RxValid));
+    memset(Com_RxSignalUpdateCount, 0, sizeof(Com_RxSignalUpdateCount));
     memset(Com_TxRuntime, 0, sizeof(Com_TxRuntime));
     Com_TxConfirmationCount = 0U;
     Com_RxIndicationCount = 0U;
@@ -350,6 +352,26 @@ uint32_t Com_GetRxIndicationCount(void)
     return Com_RxIndicationCount;
 }
 
+/* Expose Signal freshness without exposing the internal Update Bit buffer. */
+uint32_t Com_GetRxSignalUpdateCount(PduIdType SignalId)
+{
+    const Com_SignalConfigType *signal;
+    const Com_IPduConfigType *ipdu;
+    uint16_t signalIndex;
+
+    if (Com_Initialized == 0U)
+    {
+        return 0U;
+    }
+    ipdu = Com_ResolveSignal(SignalId, &signal, NULL);
+    if ((ipdu == NULL) || (ipdu->direction != COM_IPDU_RX))
+    {
+        return 0U;
+    }
+    signalIndex = (uint16_t)(signal - &Com_SignalConfig[0]);
+    return Com_RxSignalUpdateCount[signalIndex];
+}
+
 /* Decrement nominal timers, retry pending frames once and preserve U on drop. */
 void Com_MainFunctionTx(void)
 {
@@ -408,7 +430,9 @@ void Com_MainFunctionTx(void)
 void Com_RxIndication(PduIdType ComRxPduId, const PduInfoType *PduInfoPtr)
 {
     uint16_t index;
+    uint8_t signalListIndex;
     const Com_IPduConfigType *p = Com_FindIPdu(ComRxPduId, &index);
+    const Com_SignalGroupConfigType *group;
     if ((Com_Initialized == 0U) || (p == NULL) || (p->direction != COM_IPDU_RX) ||
         (PduInfoPtr == NULL) || (PduInfoPtr->SduLength != p->length) ||
         (PduInfoPtr->SduDataPtr == NULL))
@@ -421,6 +445,20 @@ void Com_RxIndication(PduIdType ComRxPduId, const PduInfoType *PduInfoPtr)
     }
     memcpy(Com_Buffer[index], PduInfoPtr->SduDataPtr, p->length);
     Com_RxValid[index] = 1U;
+    group = Com_FindGroup(p->signalGroupId);
+    for (signalListIndex = 0U;
+         signalListIndex < group->numSignals;
+         signalListIndex++)
+    {
+        const Com_SignalConfigType *signal =
+            Com_FindSignal(group->signalList[signalListIndex]);
+        uint16_t signalIndex =
+            (uint16_t)(signal - &Com_SignalConfig[0]);
+        if ((Com_ReadSlot(PduInfoPtr->SduDataPtr, signal) & 1U) != 0U)
+        {
+            Com_RxSignalUpdateCount[signalIndex]++;
+        }
+    }
     Com_RxIndicationCount++;
     Com_Log(COM_LOG_RX_ACCEPTED, ComRxPduId, p->length);
 }

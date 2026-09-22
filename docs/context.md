@@ -1,5 +1,50 @@
 # Project Context
 
+## Two-board COM/CanTp runtime fixes (2026-09-22)
+
+- The Rx application now keys LED delivery from
+  `Com_GetRxSignalUpdateCount(COM_SIGNAL_RX_LED_COMMAND)`. COM increments this
+  Signal-specific counter only when the received slot carries Update Bit 1;
+  periodic Update-Bit-zero I-PDUs no longer repeat the LED action or UART line.
+- `Can_MainFunction_Read()` now completes the FlexCAN receive sequence by
+  reading the mailbox fields, reading `TIMER` to unlock MB9, and then clearing
+  its W1C `IFLAG1` bit. This keeps MB9 available for the FF/FC/CF exchange used
+  by an 11-byte `Hello world` N-SDU.
+- CanTp final failure and the 500 ms application timeout are observable,
+  recoverable application events. They increment `g_AppCanTpTxFailures`, set
+  `g_AppRuntimeStatus`, print one diagnostic line, clear the pending marker,
+  and return `E_OK` so `src/main.c` does not stop the 1 ms scheduler.
+- Deterministic host tests cover Update-Bit filtering, mailbox unlock/flag
+  ordering, recoverable CanTp failure/timeout, Phase 1-2 transport behavior,
+  and scheduler behavior. `Debug_FLASH/Mock_MCU_Prj.elf` links without
+  undefined symbols (text 27364, data 1072, bss 6576). The corrected image
+  still requires a two-board physical rerun.
+
+## Multi-board UART-to-CanTp application flow (2026-09-22)
+
+- `app/app.c` now uses the SW2-selected role for CanTp: only a Tx board accepts
+  UART chunks and submits them through NodeApp/PduR/CanTp; every Rx board drains
+  complete NodeApp N-SDUs and writes the exact payload to its own UART.
+- A UART chunk closes after a 20 ms idle gap or at 62 bytes. Tx completion is
+  based on `NodeApp_CanTpTxConfirmation`, not a locally received data echo. A
+  missing final result is reported and released after 500 ms without stopping
+  the scheduler. Rx-board UART input is discarded; a Tx board consumes
+  received N-SDUs without printing them.
+- CAN0 internal loopback defaults off in `src/main.c`. The shared classroom
+  profile remains Data ID `0x650`, FC ID `0x658`, BS 4 and STmin 5 ms, with the
+  operational constraint that exactly one board sends Data at a time and all
+  receivers use identical FC configuration. Setting
+  `SYSTEM_ENABLE_UART_CANTP_LOOPBACK=1` also enables the separate application
+  fixture, allowing default-Rx UART input and returning the reassembled N-SDU
+  to the same UART for one-board PC/board verification.
+- `tests/board_demo/run_tests.ps1` passes sender chunking, local confirmation,
+  receiver UART delivery, role isolation, 500 ms timeout, button/scheduler
+  regressions and strict ARM compilation. `tests/cantp/run_tests.ps1` also
+  passes Phase 1-2 transport/routing regressions. The generated S32DS FLASH
+  build links with no undefined symbols at `Debug_FLASH/Mock_MCU_Prj.elf`
+  (text 27364, data 1072, bss 6576). Physical multi-board broadcast and
+  simultaneous identical FC transmissions remain unverified.
+
 ## CanTp Phase 1-2 submission evidence (2026-09-22)
 
 - `evidence/cantp_phase2/` contains individual Acceptance Matrix reports for
@@ -13,26 +58,16 @@
   compile, then regenerates protocol/routing/full logs and compiler/source-hash
   metadata. The evidence is host simulation, not a physical CAN capture.
 
-## Interactive UART-to-CanTp loopback (2026-09-22)
+## Superseded single-board UART/CanTp behavior (2026-09-22)
 
-- In Rx mode, `app/app.c` now receives LPUART1 bytes through an ISR-safe ring
-  buffer. A 20 ms idle gap or 62 accumulated bytes closes one chunk. The app
-  sends that chunk through NodeApp -> PduR -> CanTp -> CanIf -> CanDrv and
-  writes the exact reassembled bytes back to UART only after
-  `NodeApp_Receive()` succeeds and the payload comparison passes.
-- The input stream preserves every byte, including CR/LF. A 128-byte UART
-  ring buffers input arriving during an active CanTp transfer; overflow,
-  request, response, mismatch and pending counters are debugger-visible.
-  Missing loopback response fails after 500 ms instead of remaining pending.
-- `SYSTEM_ENABLE_UART_CANTP_LOOPBACK` in `src/main.c` defaults to `1U` and
-  leaves CAN0 internal loopback enabled after the startup self-test. Set it to
-  `0U` before testing the external two-board CAN bus.
-- `tests/board_demo/run_tests.ps1` passes application/button regressions,
-  raw UART echo, 62-byte boundary, Tx-mode ignore, 500 ms timeout, scheduler
-  ordering and strict ARM compilation. The full firmware ELF links with zero
-  undefined symbols at `build/uart_cantp_echo/Mock_MCU_Prj_Uart_CanTp_Echo.elf`
-  (text 28496, data 1072, bss 6776). Physical-board execution remains
-  unverified.
+- The earlier application sent UART input while in Rx and required the same
+  payload to return through CAN internal loopback before writing UART. That
+  behavior and its echo/mismatch counters have been replaced by the
+  multi-board role flow documented above.
+- The startup CanTp self-test remains available and restores normal CAN mode.
+  `SYSTEM_ENABLE_UART_CANTP_LOOPBACK` remains only as an optional internal-CAN
+  fixture and defaults to `0U`; `App_SetCanTpLoopbackMode()` supplies its
+  matching application behavior.
 
 ## CanTp Phase 2 implementation (2026-09-21)
 
