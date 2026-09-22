@@ -1,56 +1,48 @@
 #include "Com_Cfg.h"
 #include "../common/CanStack_Cfg.h"
 
-static const PduIdType VehicleStatusRxSignalList[] =
+static const PduIdType LedControlRxSignalList[] =
 {
-    COM_SIGNAL_RX_VEHICLE_SPEED, COM_SIGNAL_RX_GEAR,
-    COM_SIGNAL_RX_ALIVE_COUNTER
+    COM_SIGNAL_RX_LED_COMMAND
 };
 
-static const PduIdType VehicleStatusSignalList[] =
+static const PduIdType LedControlSignalList[] =
 {
-    COM_SIGNAL_VEHICLE_SPEED,
-    COM_SIGNAL_GEAR,
-    COM_SIGNAL_ALIVE_COUNTER
+    COM_SIGNAL_LED_COMMAND
 };
 
 const Com_SignalConfigType
 Com_SignalConfig[COM_NUM_SIGNALS] =
 {
     {
-        .signalId = COM_SIGNAL_VEHICLE_SPEED,
-        .signalGroupId = COM_SIGNAL_GROUP_VEHICLE_STATUS,
-        .slotStartBit = 0U,
-        .slotLength = 16U
+        .signalId = COM_SIGNAL_LED_COMMAND,
+        .signalGroupId = COM_SIGNAL_GROUP_LED_CONTROL,
+        .slotStartBit = 8U,
+        .slotLength = 16U,
+        .useUpdateBit = 0U
     },
-
     {
-        .signalId = COM_SIGNAL_GEAR,
-        .signalGroupId = COM_SIGNAL_GROUP_VEHICLE_STATUS,
-        .slotStartBit = 16U,
-        .slotLength = 8U
-    },
-
-    {
-        .signalId = COM_SIGNAL_ALIVE_COUNTER,
-        .signalGroupId = COM_SIGNAL_GROUP_VEHICLE_STATUS,
-        .slotStartBit = 24U,
-        .slotLength = 8U
-    },
-    { COM_SIGNAL_RX_VEHICLE_SPEED, COM_SIGNAL_GROUP_RX_VEHICLE_STATUS, 0U, 16U },
-    { COM_SIGNAL_RX_GEAR, COM_SIGNAL_GROUP_RX_VEHICLE_STATUS, 16U, 8U },
-    { COM_SIGNAL_RX_ALIVE_COUNTER, COM_SIGNAL_GROUP_RX_VEHICLE_STATUS, 24U, 8U }
+        .signalId = COM_SIGNAL_RX_LED_COMMAND,
+        .signalGroupId = COM_SIGNAL_GROUP_RX_LED_CONTROL,
+        .slotStartBit = 8U,
+        .slotLength = 16U,
+        .useUpdateBit = 0U
+    }
 };
 
 const Com_SignalGroupConfigType
 Com_SignalGroupConfig[COM_NUM_SIGNAL_GROUPS] =
 {
     {
-        .signalGroupId = COM_SIGNAL_GROUP_VEHICLE_STATUS,
-        .signalList = VehicleStatusSignalList,
-        .numSignals = 3U
+        .signalGroupId = COM_SIGNAL_GROUP_LED_CONTROL,
+        .signalList = LedControlSignalList,
+        .numSignals = 1U
     },
-    { COM_SIGNAL_GROUP_RX_VEHICLE_STATUS, VehicleStatusRxSignalList, 3U }
+    {
+        .signalGroupId = COM_SIGNAL_GROUP_RX_LED_CONTROL,
+        .signalList = LedControlRxSignalList,
+        .numSignals = 1U
+    }
 };
 
 const Com_IPduConfigType
@@ -63,7 +55,7 @@ Com_IPduConfig[COM_NUM_IPDUS] =
         .direction = COM_IPDU_TX,
         .length = 8U,
 
-        .signalGroupId = COM_SIGNAL_GROUP_VEHICLE_STATUS,
+        .signalGroupId = COM_SIGNAL_GROUP_LED_CONTROL,
 
         .periodTicks = 10U,
         .initialOffsetTicks = 1U,
@@ -71,5 +63,5 @@ Com_IPduConfig[COM_NUM_IPDUS] =
         .maxRetries = 3U
     },
     { COM_IPDU_RX_VEHICLE_STATUS, GLOBAL_PDU_VEHICLE_STATUS,
-      COM_IPDU_RX, 8U, COM_SIGNAL_GROUP_RX_VEHICLE_STATUS, 0U, 0U, 0U }
+      COM_IPDU_RX, 8U, COM_SIGNAL_GROUP_RX_LED_CONTROL, 0U, 0U, 0U }
 };

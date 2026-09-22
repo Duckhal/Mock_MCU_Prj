@@ -1,18 +1,44 @@
 # Codebase Map
 
-## Two-board receive and recovery boundary (2026-09-22)
+## Compile-time board-role boundary (2026-09-22)
 
-`drivers/can/com/Com.c` maintains a receive-update counter per Signal. The
-application uses the LED Signal counter as its freshness event, so the 10 ms
-periodic I-PDU updates the LED/UART only when that Signal carries U=1.
+`APP_BOARD_ROLE` in `app/app.h` selects `APP_ROLE_RX` or `APP_ROLE_TX` for the
+whole firmware image. `app/app.c` applies that role during `App_Init()` and has
+no button GPIO dependency, debounce state, or runtime transition. The default
+image is Rx. Build and flash a separate Tx image for the single active sender.
+
+## ADC-to-COM LED control path (2026-09-22)
+
+```text
+PTC14 potentiometer -> ADC0_SE12 -> app/app.c range mapping
+  -> Com_SendSignal every 10 ms -> COM I-PDU [globalID, mode, state, 0...]
+  -> PduR -> CanIf -> CanDrv -> CAN ID 0x100, DLC 8
+  -> CanDrv -> CanIf -> PduR -> Com_RxIndication
+  -> app/app.c -> blue LED steady or timed blink
+```
+
+`app/app.c` owns the compile-time role, ADC polling, range mapping, the 10 ms
+logical Signal update, and receiver LED timing. `drivers/can/com/Com_Cfg.c` owns
+the raw byte 1-2 Signal slot and 10 ms I-PDU schedule. `drivers/can/com/Com.c`
+owns byte-0 Global ID insertion/checking, packing, receive copying, retries,
+and scheduler state. `COM_GLOBAL_ID_ENABLED` in `Com_Cfg.h` defaults to `0U`.
+The COM path produces no UART output; `app/app.c` uses UART only for CanTp
+N-SDU bytes.
+
+## Superseded Update-Bit receive profile and retained recovery boundary (2026-09-22)
+
+`drivers/can/com/Com.c` can maintain a receive-update counter for configured
+Update-Bit Signals. The active LED profile is raw and instead uses the I-PDU
+indication counter described above. The application no longer writes LED
+events to UART.
 `drivers/can/can_driver/Can.c` reads MB9 and `TIMER` before clearing the Rx
 `IFLAG1` bit, leaving the BasicCAN mailbox ready for subsequent CanTp frames.
 
 CanTp aborts and the application's 500 ms Tx timeout are reported through
 `g_AppRuntimeStatus`, `g_AppCanTpTxFailures`, and the CanTp abort-reason
 counters. `app/app.c` clears its pending request and returns success to the
-system scheduler after recording either event, so buttons and future requests
-remain serviceable.
+system scheduler after recording either event, so future requests remain
+serviceable.
 
 ## CanTp acceptance evidence (2026-09-22)
 
@@ -64,8 +90,8 @@ policy. Repro and validation logs are under `build/uart_corruption/`.
 
 `src/main.c` is the system composition root: board boot, ordered stack init,
 application init, SysTick, optional CanTp loopback, system error policy, and the
-1 ms scheduler. `app/app.c` owns buttons, mode, LED/UART behavior, COM signal
-use, and the application side of large CanTp messages. `app/node_app.c` owns
+1 ms scheduler. `app/app.c` owns the compile-time role, ADC/LED/UART behavior,
+COM Signal use, and the application side of large CanTp messages. `app/node_app.c` owns
 CanTp buffers, queue, and PduR-facing callbacks. `app/gateway_app.c` is an empty
 future boundary. PduR now has an explicit `PduR_Init()` lifecycle API.
 
@@ -110,9 +136,12 @@ CAN ID 0x658 <-> CanIf FC L-PDU 2 <-> PduR <-> CanTp FC N-PDU 1
 
 `requirements/CanTp_Student_Guide.md` v2.1 uses the classroom mock format from `cantp_wire_format.txt` throughout. SF uses two header bytes and carries at most six data bytes; FF begins at N-SDU length seven. Examples, pseudocode and test expectations now use the same boundary.
 
-## Current entrypoint (2026-09-18)
+## Current entrypoint
 
-src/main.c runs the CanTp startup self-test and then the two-board COM application: one main(), no BOARD_MODE selector or legacy test dispatch. SW2 changes Rx/Tx, SW3 updates the LED command via Com_SendSignal in Tx, and Rx applies Com_ReceiveSignal data. Each 1 ms tick polls Can Write, Can Read and CanTp; COM Tx is called afterward in Tx. The production CanIf COM Tx/Rx mapping is CAN ID 0x100, DLC 8; CanTp uses Data 0x650 and FC 0x658. Host tests pass and the ARM FLASH ELF links; board runtime has not been tested.
+`src/main.c` is the composition root and 1 ms scheduler. The application uses
+its compiled role, samples ADC and updates the COM LED Signal every 10 ms in Tx,
+then applies received mode/state commands in Rx. The production CanIf COM
+mapping is CAN ID `0x100`, DLC 8; CanTp uses Data `0x650` and FC `0x658`.
 
 Snapshot: 2026-09-18, sau khi thêm SW2/SW3 đổi vai trò Tx/Rx. Quy tắc tương tác và mục tiêu: [context.md](context.md). Map này phản ánh source và kiểm chứng host/ARM; không chứng minh firmware chạy được trên board.
 
@@ -122,7 +151,9 @@ CanDrv validation (2026-09-15): Can.c đã validate toàn bộ controller/HOH tr
 
 Project C bare-metal S32 Design Studio/Eclipse cho S32K144. Mục tiêu là mock ba ECU giao tiếp CAN với hai đầu UART nối PC. Stack CAN Part 1 hiện đã triển khai lại cho profile VehicleStatus/CAN0.
 
-CanDrv, CanIf, PduR and COM are connected for VehicleStatus Tx/Rx. COM packs signals, handles Update Bits, schedules periodic Tx and decodes Rx. src/main.c is the COM application only; src/can_loopback_test.c remains a separate legacy test source and is not invoked by main.
+CanDrv, CanIf, PduR and COM are connected for the LED control I-PDU. COM packs
+the raw mode/state Signal, schedules periodic Tx and decodes Rx. `src/main.c`
+contains system integration only; `app/app.c` owns application behavior.
 
 ## Cây thư mục còn lại
 
@@ -158,12 +189,12 @@ docs/implement không tồn tại. Tests CAN0 mới nằm tại tests/can_driver
 
 | Module | File/ranh giới còn tồn tại | Phụ thuộc và trạng thái |
 |---|---|---|
-| Entrypoint | [src/main.c](../src/main.c) | One COM application main: SW2 toggles Tx/Rx, SW3 updates the COM LED signal in Tx, Rx applies received COM command; 1 ms Can Write/Read then COM Tx in Tx. No test dispatch. |
+| Entrypoint | [src/main.c](../src/main.c) | System init and 1 ms Can Write/Read, CanTp, App, then conditional COM Tx scheduling. |
 | Loopback board test | [can_loopback_test.c](../src/can_loopback_test.c), [header](../src/can_loopback_test.h) | Legacy test source remains separate and is not called from main. |
-| TC-003 host tests | [test_tx.c](../tests/board_demo/test_tx.c), [test_rx.c](../tests/board_demo/test_rx.c), [test_buttons.c](../tests/board_demo/test_buttons.c), [README](../tests/board_demo/README.md) | Mode nút bấm kiểm SW2/SW3, LED đỏ báo Tx, gửi/nhận TC-003; tests Tx/Rx cố định vẫn pass. ELF mode 4 đã link, chưa chạy board. |
+| Board application tests | [test_adc_led_mapping.c](../tests/board_demo/test_adc_led_mapping.c), [test_buttons.c](../tests/board_demo/test_buttons.c), [test_com_update_filter.c](../tests/board_demo/test_com_update_filter.c), [README](../tests/board_demo/README.md) | Verify both compile-time roles, all ADC boundaries, 10 ms updates, receiver blink/steady behavior, and UART isolation. |
 | PduR Tx/Rx | [PduR.c](../drivers/can/pdur/PduR.c), [PduR_Cfg.c](../drivers/can/pdur/PduR_Cfg.c) | PduR_ComTransmit route COM→CanIf; CanIf callbacks route confirmation và Rx về COM. Config VehicleStatus global0x0010; debug counters và Rx byte snapshot phục vụ main. |
-| COM Part 1 | [Com.c](../drivers/can/com/Com.c), [Com.h](../drivers/can/com/Com.h), [Com_Cfg.c](../drivers/can/com/Com_Cfg.c) | Validate hierarchy/slot/timing; pack Signal + Update Bit, scheduler 1 ms với bounded retry/latest value, receive decode. Tx và Rx I-PDU có group riêng, cùng logical GlobalPduId. |
-| COM host tests | [test_com.c](../tests/com/test_com.c), [test_com_config.c](../tests/com/test_com_config.c) | Deterministic pack/Rx/offset/retry/drop tests và 12 malformed config fixtures đều pass. |
+| COM Part 1 | [Com.c](../drivers/can/com/Com.c), [Com.h](../drivers/can/com/Com.h), [Com_Cfg.c](../drivers/can/com/Com_Cfg.c) | Validate hierarchy/slot/timing; pack `[globalID][mode][state][0...]`, schedule with bounded retry/latest value, and decode Rx. The active LED Signal has no Update Bit. |
+| COM host tests | [test_com.c](../tests/com/test_com.c), [test_com_config.c](../tests/com/test_com_config.c) | Deterministic raw frame/Rx/offset/retry/drop tests in both Global ID modes and 13 malformed config fixtures pass. |
 | Startup/linker | Project_Settings/Startup_Code, Project_Settings/Linker_Files | Reset/vector/memory layout và vendor headers trong include; chưa audit toàn bộ ở lượt này. |
 | CAN common mới | [CanStack_Types.h](../drivers/can/common/CanStack_Types.h), [CanStack_Cfg.h](../drivers/can/common/CanStack_Cfg.h), [CanStack_Cfg.c](../drivers/can/common/CanStack_Cfg.c) | Common PDU types đã có; header config định nghĩa ba GlobalPduId vehicle/engine/climate 0x0010..0x0012. CanStack_Cfg.c còn rỗng; chưa có binding qua các tầng. |
 | CAN driver mới | [Can.c](../drivers/can/can_driver/Can.c), [Can.h](../drivers/can/can_driver/Can.h), [Can_Types.h](../drivers/can/can_driver/Can_Types.h), [Can_cfg.c](../drivers/can/can_driver/Can_cfg.c), [Can_Cfg.h](../drivers/can/can_driver/Can_Cfg.h) | Bốn API, hardware CAN0/8 MHz oscillator/500 kbit/s, standard Classical data, Tx MB8/Rx MB9. Validate toàn bộ config và resolve HOH→object→controller theo ID. Production HTH0/HRH1; logical IDs có thể sparse. Snapshot Tx, saved swPduHandle, bounded waits và debugger logs; callbacks nối sang CanIf. |
@@ -173,7 +204,7 @@ docs/implement không tồn tại. Tests CAN0 mới nằm tại tests/can_driver
 | CAN BSP | [board_can.c](../bsp/can/board_can.c), [board_can.h](../bsp/can/board_can.h) | Main gọi disable_WDOG/init_MCU trước driver init; sử dụng S32K144.h và LED BSP. BSP waits cũ unbounded. |
 | CAN reference driver | [Can.c](../can_task/driver/src/Can.c), [Can.h](../can_task/driver/inc/Can.h), [Can_Cfg.c](../can_task/driver/src/Can_Cfg.c) | FlexCAN0; config normal/loopback, MB0 Tx và MB1 Rx exact 0x123. Driver include/callback trực tiếp CanUpper; không phải driver mới. |
 | Reference upper/test | [CanUpper.c](../can_task/upper/src/CanUpper.c), [test/main.c](../can_task/test/main.c) | CanUpper gọi driver, giữ PDU data/status; harness #if 0. Chưa nối với firmware main. |
-| App | [app.c](../app/app.c), [app.h](../app/app.h), [node_app.c](../app/node_app.c), [node_app.h](../app/node_app.h), app/gateway_app.c/h | SW2 selects the COM/CanTp role. Tx accepts UART chunks and sends one CanTp N-SDU; Rx writes each reassembled N-SDU exactly to UART. An explicit fixture flag permits default-Rx UART self-echo only while CAN internal loopback is selected. NodeApp owns the stable Tx source and two-slot FIFO Rx queue; gateway files remain empty. |
+| App | [app.c](../app/app.c), [app.h](../app/app.h), [node_app.c](../app/node_app.c), [node_app.h](../app/node_app.h), app/gateway_app.c/h | `APP_BOARD_ROLE` fixes the COM/CanTp role. Tx accepts UART chunks and sends one CanTp N-SDU; Rx writes each reassembled N-SDU exactly to UART. An explicit fixture flag permits default-Rx UART self-echo only while CAN internal loopback is selected. NodeApp owns the stable Tx source and two-slot FIFO Rx queue; gateway files remain empty. |
 | UART | [Driver_UART.c](../drivers/uart/Driver_UART.c), [Driver_UART.h](../drivers/uart/Driver_UART.h) | LPUART1 ISR feeds the app ring buffer. Tx-mode input closes on a 20 ms gap or 62 bytes; Rx-mode CanTp payload is emitted with blocking byte writes. |
 | Byte queue | [ring_buffer.c](../middlewares/ring_buffer.c), [ring_buffer.h](../middlewares/ring_buffer.h) | Byte FIFO dùng storage caller cung cấp; không phải CAN frame queue. |
 | Timebase/IRQ | drivers/systick, drivers/lpit, drivers/nvic | `Driver_SysTick_Init(1000U, NULL)` cấp tick 1 ms cho mode COM mặc định; main xử lý bù tick trong ngữ cảnh polling, chưa đo jitter trên board. |
@@ -197,7 +228,10 @@ src/main.c
   -> PASS/FAIL debugger result -> vòng lặp vô hạn
 ~~~
 
-Current physical application: SW3 -> Com_SendSignal -> Com_MainFunctionTx -> PduR -> CanIf -> CAN0 bus -> CanIf Rx -> PduR -> COM -> Com_ReceiveSignal -> RGB LED. CAN ID 0x100, DLC8, command in COM byte 2.
+Current physical application: ADC0_SE12 -> app range mapping ->
+Com_SendSignal -> Com_MainFunctionTx -> PduR -> CanIf -> CAN0 bus -> CanIf Rx
+-> PduR -> COM -> Com_ReceiveSignal -> blue LED. CAN ID is `0x100`, DLC is 8,
+mode is byte 1 and state is byte 2.
 
 src/can_loopback_test.c remains a separate legacy harness. The active startup self-test is src/cantp_loopback_test.c.
 

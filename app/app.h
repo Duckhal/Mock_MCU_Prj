@@ -5,14 +5,24 @@
 
 #define APP_MAX_LARGE_MESSAGE_LENGTH (62U)
 
-#define APP_STATE_ERROR_TX_COMMAND (1UL << 0U)
-#define APP_STATE_ERROR_SWITCH     (1UL << 1U)
-#define APP_STATE_ERROR_LIFECYCLE  (1UL << 2U)
+#define APP_ROLE_RX (0U)
+#define APP_ROLE_TX (1U)
+
+/* Select one fixed role for each firmware image before building. */
+#ifndef APP_BOARD_ROLE
+#define APP_BOARD_ROLE APP_ROLE_TX
+#endif
+#if ((APP_BOARD_ROLE != APP_ROLE_RX) && (APP_BOARD_ROLE != APP_ROLE_TX))
+#error "APP_BOARD_ROLE must be APP_ROLE_RX or APP_ROLE_TX"
+#endif
+
+#define APP_STATE_ERROR_LIFECYCLE   (1UL << 0U)
+#define APP_STATE_ERROR_LED_COMMAND (1UL << 1U)
 
 typedef enum
 {
     APP_INIT_ERROR_NONE = 0,
-    APP_INIT_ERROR_GPIO,
+    APP_INIT_ERROR_ADC,
     APP_INIT_ERROR_UART,
     APP_INIT_ERROR_UART_BUFFER,
     APP_INIT_ERROR_HARDWARE_NOT_READY,
@@ -24,6 +34,7 @@ typedef enum
     APP_RUNTIME_OK = 0,
     APP_RUNTIME_NOT_INITIALIZED,
     APP_RUNTIME_STATE_CORRUPTION,
+    APP_RUNTIME_ADC_ERROR,
     APP_RUNTIME_COM_SEND_ERROR,
     APP_RUNTIME_COM_RECEIVE_ERROR,
     APP_RUNTIME_CANTP_RECEIVE_ERROR,
@@ -39,6 +50,10 @@ extern volatile uint32_t g_AppMainFunctionCount;
 extern volatile uint32_t g_AppTxSignalUpdates;
 extern volatile uint32_t g_AppRxCommands;
 extern volatile uint32_t g_AppInvalidRxCommands;
+extern volatile uint32_t g_AppAdcConversions;
+extern volatile uint16_t g_AppAdcValue;
+extern volatile uint8_t g_AppLedMode;
+extern volatile uint8_t g_AppLedState;
 extern volatile uint32_t g_AppUartErrors;
 extern volatile uint32_t g_AppCanTpTxRequests;
 extern volatile uint32_t g_AppCanTpTxRejects;
@@ -54,17 +69,16 @@ extern volatile uint8_t g_AppCanTpTxPending;
 extern volatile uint8_t g_AppCanTpInternalLoopback;
 extern volatile uint32_t g_AppStateCorruptionCount;
 extern volatile uint32_t g_AppStateErrorMask;
-extern volatile uint32_t g_AppLastInvalidTxCommand;
 extern volatile PduLengthType g_AppLastCanTpRxLength;
 extern uint8_t g_AppLastCanTpRxData[APP_MAX_LARGE_MESSAGE_LENGTH];
 
-/** Initialize the GPIO, LED, and UART peripherals owned by the application. */
+/** Initialize the ADC, LED, and UART peripherals owned by the application. */
 Std_ReturnType App_HardwareInit(void);
 
 /** Initialize application state and CanTp-owned buffers. */
 Std_ReturnType App_Init(void);
 
-/** Execute button, COM, LED, UART, and CanTp application work for one tick. */
+/** Execute ADC, COM, LED, UART, and CanTp application work for one tick. */
 Std_ReturnType App_MainFunction(uint32_t Tick);
 
 /** Return non-zero when the application permits periodic COM transmission. */

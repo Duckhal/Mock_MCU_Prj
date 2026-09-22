@@ -1,8 +1,45 @@
 # Project Context
 
-## Two-board COM/CanTp runtime fixes (2026-09-22)
+## Compile-time board role (2026-09-22)
 
-- The Rx application now keys LED delivery from
+- `APP_BOARD_ROLE` in `app/app.h` selects one role per firmware image:
+  `APP_ROLE_RX` is the safe default and `APP_ROLE_TX` builds the sender image.
+  The application no longer initializes or reads SW2/PTC12 and contains no
+  role debounce or runtime role transition.
+- `App_Init()` copies the configured role to debugger-visible `g_AppModeTx`.
+  A Tx image lights the red LED, samples ADC, schedules COM Tx, and accepts PC
+  UART data for CanTp. An Rx image applies received COM commands and writes
+  completed CanTp N-SDUs to its PC UART.
+- Host fixtures compile both role configurations and verify that the Tx image
+  remains Tx for the complete run while the default Rx image receives the LED
+  command. The main scheduler no longer performs any button GPIO read.
+
+## ADC-driven COM LED profile (2026-09-22)
+
+- The active COM frame on standard CAN ID `0x100` has DLC 8 and payload
+  `[globalID][mode][state][00][00][00][00][00]`. The default
+  `COM_GLOBAL_ID_ENABLED=0U` selects byte 0 value `0x00`; enabling it selects
+  the Tx LED Signal ID. Mode/state occupy a raw 16-bit little-endian Signal at
+  bytes 1-2 without an Update Bit.
+- In Tx, `app/app.c` samples ADC0_SE12/PTC14 and updates the logical COM Signal
+  every 10 ms. ADC 0-999 maps to mode 0/state 0, 1000-1999 to mode 1/state 1,
+  2000-2999 to mode 2/state 1, 3000-3999 to mode 3/state 1, and 4000-4095 to
+  mode 0/state 1. Neither SW2 nor SW3 owns an application action.
+- In Rx, mode 1, 2, and 3 blink the blue LED with equal ON/OFF intervals of
+  500, 1000, and 2000 ms. Mode 0/state 0 turns it off and mode 0/state 1 keeps
+  it on. Repeated 10 ms frames do not reset the blink epoch.
+- UART now carries only CanTp application bytes. COM mode/LED lines and CanTp
+  failure diagnostic strings are observable through state/counters instead.
+- Deterministic app tests cover all ADC range boundaries, 10 ms updates, raw
+  COM reception, steady states, blink timing, and absence of COM UART output.
+  COM tests cover frame bytes with Global ID disabled and enabled. The full
+  default-Rx `Debug_FLASH/Mock_MCU_Prj.elf` build succeeds without undefined
+  symbols (text 28208, data 1072, bss 6560); the Tx role also passes strict ARM
+  compilation. Physical ADC and two-board behavior remain to be measured.
+
+## Superseded Update-Bit COM profile and retained CAN fixes (2026-09-22)
+
+- The earlier Rx application keyed LED delivery from
   `Com_GetRxSignalUpdateCount(COM_SIGNAL_RX_LED_COMMAND)`. COM increments this
   Signal-specific counter only when the received slot carries Update Bit 1;
   periodic Update-Bit-zero I-PDUs no longer repeat the LED action or UART line.
@@ -10,11 +47,13 @@
   reading the mailbox fields, reading `TIMER` to unlock MB9, and then clearing
   its W1C `IFLAG1` bit. This keeps MB9 available for the FF/FC/CF exchange used
   by an 11-byte `Hello world` N-SDU.
-- CanTp final failure and the 500 ms application timeout are observable,
+- CanTp final failure and the 500 ms application timeout remain observable,
   recoverable application events. They increment `g_AppCanTpTxFailures`, set
-  `g_AppRuntimeStatus`, print one diagnostic line, clear the pending marker,
-  and return `E_OK` so `src/main.c` does not stop the 1 ms scheduler.
-- Deterministic host tests cover Update-Bit filtering, mailbox unlock/flag
+  `g_AppRuntimeStatus`, clear the pending marker, and return `E_OK` so
+  `src/main.c` does not stop the 1 ms scheduler. Diagnostic UART lines were
+  removed when UART became exclusive to CanTp payload bytes.
+- Historical deterministic tests covered Update-Bit filtering; current tests
+  cover the raw mode/state profile. Mailbox unlock/flag
   ordering, recoverable CanTp failure/timeout, Phase 1-2 transport behavior,
   and scheduler behavior. `Debug_FLASH/Mock_MCU_Prj.elf` links without
   undefined symbols (text 27364, data 1072, bss 6576). The corrected image
@@ -22,7 +61,7 @@
 
 ## Multi-board UART-to-CanTp application flow (2026-09-22)
 
-- `app/app.c` now uses the SW2-selected role for CanTp: only a Tx board accepts
+- `app/app.c` now uses the compile-time role for CanTp: only a Tx board accepts
   UART chunks and submits them through NodeApp/PduR/CanTp; every Rx board drains
   complete NodeApp N-SDUs and writes the exact payload to its own UART.
 - A UART chunk closes after a 20 ms idle gap or at 62 bytes. Tx completion is
@@ -38,7 +77,7 @@
   fixture, allowing default-Rx UART input and returning the reassembled N-SDU
   to the same UART for one-board PC/board verification.
 - `tests/board_demo/run_tests.ps1` passes sender chunking, local confirmation,
-  receiver UART delivery, role isolation, 500 ms timeout, button/scheduler
+  receiver UART delivery, role isolation, 500 ms timeout, and scheduler
   regressions and strict ARM compilation. `tests/cantp/run_tests.ps1` also
   passes Phase 1-2 transport/routing regressions. The generated S32DS FLASH
   build links with no undefined symbols at `Debug_FLASH/Mock_MCU_Prj.elf`
@@ -87,7 +126,7 @@
   undefined symbols (text 26964, data 1072, bss 6472). Physical-board timing
   remains unverified.
 
-## UART corruption guard (2026-09-21)
+## Historical UART corruption guard (2026-09-21)
 
 - A physical-board trace showed valid UART lines followed by binary bytes and
   truncated text. Source tracing found one Tx owner (`app/app.c`) and a missing
@@ -95,8 +134,8 @@
 - Deterministic repro `build/uart_corruption/repro_invalid_command.c` showed
   the pre-fix code accepted command `0x100` and continued through the invalid
   table access. After the fix it returns `E_NOT_OK` before UART transmission.
-- `App_ValidateState()` now checks command, switch, and lifecycle invariants.
-  It records `g_AppStateErrorMask`, `g_AppLastInvalidTxCommand`, and
+- The current `App_ValidateState()` checks LED mode/state, switch, and lifecycle
+  invariants. It records `g_AppStateErrorMask` and
   `g_AppStateCorruptionCount`; main latches `SYSTEM_APP_RUNTIME_FAILED`.
 - Button/scheduler/app and CanTp regressions pass. Strict ARM compile passes;
   `build/uart_corruption/Mock_MCU_Prj_Uart_Guard.elf` links with no undefined
@@ -110,8 +149,8 @@
   SysTick setup, the 1 ms scheduler, system failure policy, and the optional
   CanTp startup loopback. It contains no button, LED, UART business, COM signal,
   or N-SDU construction logic.
-- `app/app.c` owns SW2/SW3 debounce, Tx/Rx mode, LED/UART indications, COM signal
-  use, and CanTp large-message submission/consumption. `app/node_app.c` remains
+- `app/app.c` owns the fixed Tx/Rx role, ADC/LED behavior, COM Signal use,
+  and CanTp UART submission/consumption. `app/node_app.c` remains
   the stable CanTp Tx source and two-slot Rx queue/callback boundary.
 - Initialization is board hardware, application peripherals, CanDrv, CanIf,
   PduR, CanTp, COM, application state, SysTick, then optional loopback.
@@ -142,10 +181,10 @@
 - `requirements/CanTp_Student_Guide.md` v2.1 now consistently follows `cantp_wire_format.txt`: SF `[00][Length][up to 6 data]`, FF `[10][Length][6 data]`, CF `[20|SN][up to 7 data]`, FC unchanged, DLC 8 and zero Tx padding. SF covers N-SDU 1..6 and FF/CF covers 7..62.
 - Configuration examples, frame vectors, pack/decode pseudocode, validation boundaries, defensive cases, T01 and the acceptance matrix were updated together. A consistency check found all required new rules, no listed obsolete rules, and balanced Markdown fences.
 
-## Current application entry (2026-09-18)
+## Superseded application entry (2026-09-18)
 
-- src/main.c has one main(), runs the dedicated CanTp startup self-test, then enters the two-board COM application. It has no BOARD_MODE selector, raw CanIf transmission, or embedded legacy test helpers. SW2/PTC12 toggles Rx/Tx; Tx lights red and SW3/PTC13 updates the LED command through Com_SendSignal. Rx reads through Com_ReceiveSignal after a COM indication.
-- CAN0 is 500 kbit/s; production CanIf Tx/Rx use standard ID 0x100 and DLC 8. COM stores the LED command in its existing Gear slot at payload byte 2 as (command << 1) | Update Bit. GlobalPduId 0x0010 is a logical route, not a payload byte. COM Tx runs periodically at 10 ms only while in Tx.
+- This snapshot used SW3 and an Update-Bit Gear slot. It has been replaced by
+  the ADC-driven raw mode/state profile at the top of this file.
 - The 1 ms loop calls Can_MainFunction_Write, Can_MainFunction_Read, CanTp_MainFunction, then Com_MainFunctionTx in Tx. Host application/COM/CanIf mapping tests pass and the complete ARM FLASH ELF links with no undefined symbols. Board behavior and timing remain unverified. Older BOARD_MODE and direct CanIf demo notes below are historical and no longer describe the current entrypoint.
 
 Cập nhật: 2026-09-18, sau khi đổi demo sang CAN ID 0x100/DLC8. Đọc cùng [codebase-map.md](codebase-map.md) trước mỗi task. Snapshot phải được kiểm tra lại nếu người dùng đang thay đổi repo.
@@ -186,7 +225,10 @@ Cập nhật: 2026-09-18, sau khi đổi demo sang CAN ID 0x100/DLC8. Đọc cù
 
 - Review khả năng nạp (2026-09-15): CanIf_loopback.elf được readelf xác nhận ARM ELF32 executable, có vector table tại Flash 0x0, flash_config tại 0x400 và Reset_Handler entry 0x529; nm không còn undefined symbols. Có thể chọn ELF này trong debug configuration cho S32K144 để nạp, nhưng chưa xác nhận flash/board runtime. can_task/test/main.c vẫn #if 0 và ngoài source entries, không phải harness trong ELF này.
 
-- [src/main.c](../src/main.c) runs the COM two-board application and initializes NodeApp/CanTp as part of the complete stack. Each 1 ms tick polls Can Write/Read, then CanTp, and runs COM Tx in Tx mode. SW2 changes role, SW3 updates the LED command through Com_SendSignal, and Rx uses Com_ReceiveSignal.
+- [src/main.c](../src/main.c) runs the two-board application and initializes
+  NodeApp/CanTp as part of the complete stack. Each 1 ms tick polls Can
+  Write/Read, then CanTp and App, and runs COM Tx in Tx mode. App maps ADC data
+  to the LED Signal according to the compiled role.
 - [.cproject](../.cproject): Debug_FLASH lấy source từ Project_Settings, app, bsp, drivers, include, middlewares và src. Ba cấu hình Release_FLASH/Debug_RAM/Release_RAM chỉ lấy Project_Settings, include và src.
 - can_task không nằm trong source entries của cả bốn cấu hình. Harness can_task/test/main.c còn bị bọc trong #if 0.
 - Generated Debug_FLASH vẫn có source lists cũ trỏ tới các CAN folders đã xóa; IDE cần regenerate khi build Debug_FLASH. Firmware harness đã compile/link FLASH riêng từ source thật cùng startup, BSP, GPIO/NVIC và CanDrv/CanIf/config: build/canif/CanIf_loopback.elf. Chưa flash hoặc chạy board.
@@ -260,7 +302,10 @@ Nguồn chính là [assignment_part1_com_signal.md](../requirements/assignment_p
 
 ## COM Signal pointer API (2026-09-18)
 
-- Theo lựa chọn của người dùng, `Com_SendSignal(SignalId, const void *SignalDataPtr)` và `Com_ReceiveSignal(SignalId, void *SignalDataPtr)` đều nhận đúng hai tham số; trong profile hiện tại con trỏ phải trỏ tới `uint32_t`. Receive chỉ xuất giá trị, không xuất Update Bit; U vẫn được COM giữ/xóa theo chính sách Tx và giải mã nằm trong raw Rx slot. Loopback harness kiểm U qua `PduR_LastRxBytes`.
+- `Com_SendSignal(SignalId, const void *SignalDataPtr)` and
+  `Com_ReceiveSignal(SignalId, void *SignalDataPtr)` receive two parameters; the
+  pointer targets a `uint32_t`. The active LED Signal is raw and contains the
+  encoded mode/state value; its configured slot does not use an Update Bit.
 - Đã cập nhật caller trong `src/can_loopback_test.c` và hai COM host tests (test sources bị ignore). Host COM tests và 12 malformed config fixtures pass sau đổi API; `Com.c`, `can_loopback_test.c` và `main.c` compile ARM với `-Wall -Wextra -Werror`. Mode COM mặc định đã link thành ELF ARM sau thay đổi chữ ký; chưa flash/test board.
 
 ## Main loop CAN/COM 1 ms (2026-09-18)
@@ -268,7 +313,7 @@ Nguồn chính là [assignment_part1_com_signal.md](../requirements/assignment_p
 - `BOARD_MODE=3` cho Part 1 (đã là mặc định trước khi thêm mode nút bấm): init Can→CanIf→Com, cập nhật `SystemCoreClock`, khởi tạo SysTick 1000 Hz; main xử lý từng tick theo thứ tự `Can_MainFunction_Write()` → `Can_MainFunction_Read()` → `Com_MainFunctionTx()`. Nếu main trễ, xử lý bù các tick đã trôi qua; `g_ComStackProcessedTicks`, `g_ComStackMaxBacklog`, `g_ComStackStatus` cho debugger. Mode 0 loopback và 1/2/4 demo vẫn tách biệt vì cùng CAN ID 0x100 nhưng layout payload khác nhau.
 - `tests/com_stack/test_main_scheduler.c` kiểm tra thứ tự WRC, tick không đổi, bù tick và wraparound; pass. `build/com_stack/com_stack.elf` full ARM FLASH compile/link với macro CPU từ `.cproject`, không còn undefined symbol. Chưa đo jitter/tần số thực trên board nên checklist T02 vẫn mở; I04 đã đạt. Thất bại build thử ban đầu do thiếu CPU macro/sysroot được lưu ở `build/com_stack/build_failure.log` và `build/com_stack/build.log`; bản link thành công ở `build/com_stack/build_result.log`.
 
-## Hai nút điều khiển vai trò board (2026-09-18)
+## Superseded two-button LED control (2026-09-18)
 
-- After the CanTp startup self-test passes, src/main.c starts in Rx. SW2/PTC12 toggles Rx/Tx, and SW3/PTC13 updates the COM LED command only in Tx. The Tx role lights red; Rx waits for a COM indication before changing LEDs. UART logs the self-test result, logical mode and command.
-- Current main uses the 1 ms Can Write -> Can Read -> COM Tx order in Tx. COM owns packing, so the prior raw byte-1 LED demo format no longer applies. The production frame is CAN ID 0x100, DLC8, with the LED command and Update Bit in byte 2; GlobalPduId 0x0010 is a logical route.
+- This snapshot used SW2/SW3 and UART LED logs. The active application uses a
+  compile-time role, ADC for commands, and reserves UART for CanTp data.

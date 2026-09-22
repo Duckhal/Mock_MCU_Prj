@@ -12,6 +12,7 @@ New-Item -ItemType Directory -Force -Path $taskOutput | Out-Null
 'UART CanTp multi-board application verification' | Tee-Object -FilePath $taskLog
 $taskTests = @(
     (Join-Path $PSScriptRoot 'test_app.c'),
+    (Join-Path $PSScriptRoot 'test_adc_led_mapping.c'),
     (Join-Path $PSScriptRoot 'test_buttons.c'),
     (Join-Path $PSScriptRoot 'test_com_update_filter.c'),
     (Join-Path $PSScriptRoot 'test_uart_cantp_echo.c'),

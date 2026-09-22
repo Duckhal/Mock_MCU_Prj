@@ -7,19 +7,33 @@
  * Signal configuration
  * ========================= */
 
-#define COM_NUM_SIGNALS                 (6U)
+#define COM_NUM_SIGNALS                 (2U)
 
-#define COM_SIGNAL_VEHICLE_SPEED        ((PduIdType)0U)
-#define COM_SIGNAL_GEAR                 ((PduIdType)1U)
-#define COM_SIGNAL_ALIVE_COUNTER        ((PduIdType)2U)
-#define COM_SIGNAL_RX_VEHICLE_SPEED     ((PduIdType)3U)
-#define COM_SIGNAL_RX_GEAR              ((PduIdType)4U)
-#define COM_SIGNAL_RX_ALIVE_COUNTER     ((PduIdType)5U)
+/* Keep the transmitted LED Signal ID non-zero so enabled Global ID is visible. */
+#define COM_SIGNAL_LED_COMMAND          ((PduIdType)1U)
+#define COM_SIGNAL_RX_LED_COMMAND       ((PduIdType)2U)
 
-/* Demo app uses the existing 8-bit Gear slot for the LED command.
- * COM places its Update Bit in bit 0 of payload byte 2. */
-#define COM_SIGNAL_LED_COMMAND          COM_SIGNAL_GEAR
-#define COM_SIGNAL_RX_LED_COMMAND       COM_SIGNAL_RX_GEAR
+/* Byte 0 is zero by default; enable this to encode COM_SIGNAL_LED_COMMAND. */
+#ifndef COM_GLOBAL_ID_ENABLED
+#define COM_GLOBAL_ID_ENABLED           (0U)
+#endif
+#if ((COM_GLOBAL_ID_ENABLED != 0U) && (COM_GLOBAL_ID_ENABLED != 1U))
+#error "COM_GLOBAL_ID_ENABLED must be 0U or 1U"
+#endif
+
+#define COM_LED_MODE_STEADY             (0U)
+#define COM_LED_MODE_BLINK_500_MS       (1U)
+#define COM_LED_MODE_BLINK_1000_MS      (2U)
+#define COM_LED_MODE_BLINK_2000_MS      (3U)
+#define COM_LED_MODE_MAX                COM_LED_MODE_BLINK_2000_MS
+#define COM_LED_STATE_OFF               (0U)
+#define COM_LED_STATE_ON                (1U)
+
+/* The logical uint32 Signal value maps to wire bytes [mode][state]. */
+#define COM_LED_COMMAND_ENCODE(mode, state) \
+    ((uint32_t)(mode) | ((uint32_t)(state) << 8U))
+#define COM_LED_COMMAND_GET_MODE(value) ((uint8_t)((value) & 0xFFU))
+#define COM_LED_COMMAND_GET_STATE(value) ((uint8_t)(((value) >> 8U) & 0xFFU))
 
 /* =========================
  * Signal Group configuration
@@ -27,9 +41,8 @@
 
 #define COM_NUM_SIGNAL_GROUPS           (2U)
 
-#define COM_SIGNAL_GROUP_VEHICLE_STATUS \
-    ((PduIdType)0U)
-#define COM_SIGNAL_GROUP_RX_VEHICLE_STATUS ((PduIdType)1U)
+#define COM_SIGNAL_GROUP_LED_CONTROL       ((PduIdType)0U)
+#define COM_SIGNAL_GROUP_RX_LED_CONTROL    ((PduIdType)1U)
 
 /* =========================
  * I-PDU configuration

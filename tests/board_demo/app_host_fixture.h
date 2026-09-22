@@ -17,12 +17,11 @@ static uint32_t Test_Tick;
 static uint32_t Test_StopAt;
 static uint32_t Test_RxAt;
 static uint32_t Test_RxValue;
-static uint32_t Test_RxSignalUpdateCount;
 static uint32_t Test_JumpAt;
 static uint8_t Test_RxInjected;
 static uint8_t Test_RxValid;
 static uint8_t Test_LedState[3];
-static uint32_t Test_SentCommands[8];
+static uint32_t Test_SentCommands[32];
 static uint32_t Test_SendCount;
 static uint32_t Test_ReceiveCount;
 static uint32_t Test_SchedulerCount;
@@ -45,6 +44,8 @@ static uint32_t Test_UartStringCount;
 static UART_RxCallback_t Test_UartRxCallback;
 static uint8_t Test_UartRawTx[256];
 static uint16_t Test_UartRawTxLength;
+static uint16_t Test_AdcValue;
+static uint32_t Test_AdcStartCount;
 
 volatile uint32_t Com_RxIndicationCount;
 volatile uint32_t NodeApp_TxConfirmationCount;
@@ -63,37 +64,6 @@ static void Test_RecordEvent(char event)
     }
 }
 
-/** Return active-low switch levels for two button presses per switch. */
-static uint32_t Test_GpioInput(ARM_GPIO_Pin_t pin)
-{
-    if (pin == GPIO_C12)
-    {
-        Test_RecordEvent('A');
-        return ((Test_Tick >= 5U && Test_Tick <= 30U) ||
-                (Test_Tick >= 110U && Test_Tick <= 135U)) ? 0U : 1U;
-    }
-    assert(pin == GPIO_C13);
-    return ((Test_Tick >= 40U && Test_Tick <= 65U) ||
-            (Test_Tick >= 90U && Test_Tick <= 115U)) ? 0U : 1U;
-}
-
-static int32_t Test_GpioSetup(ARM_GPIO_Pin_t pin, ARM_GPIO_SignalEvent_t cb)
-{ assert((pin == GPIO_C12 || pin == GPIO_C13) && cb == NULL); return ARM_DRIVER_OK; }
-
-static int32_t Test_GpioDirection(ARM_GPIO_Pin_t pin, ARM_GPIO_DIRECTION direction)
-{ assert((pin == GPIO_C12 || pin == GPIO_C13) && direction == ARM_GPIO_INPUT); return ARM_DRIVER_OK; }
-
-static int32_t Test_GpioPull(ARM_GPIO_Pin_t pin, ARM_GPIO_PULL_RESISTOR pull)
-{ assert((pin == GPIO_C12 || pin == GPIO_C13) && pull == ARM_GPIO_PULL_UP); return ARM_DRIVER_OK; }
-
-ARM_DRIVER_GPIO Driver_GPIO0 =
-{
-    .Setup = Test_GpioSetup,
-    .SetDirection = Test_GpioDirection,
-    .SetPullResistor = Test_GpioPull,
-    .GetInput = Test_GpioInput
-};
-
 static unsigned Test_LedIndex(ARM_GPIO_Pin_t pin)
 {
     if (pin == LED_BLUE) { return 0U; }
@@ -105,6 +75,15 @@ static unsigned Test_LedIndex(ARM_GPIO_Pin_t pin)
 void LED_Init(ARM_GPIO_Pin_t pin) { Test_LedState[Test_LedIndex(pin)] = 0U; }
 void LED_On(ARM_GPIO_Pin_t pin) { Test_LedState[Test_LedIndex(pin)] = 1U; }
 void LED_Off(ARM_GPIO_Pin_t pin) { Test_LedState[Test_LedIndex(pin)] = 0U; }
+
+uint32_t ADC_Init(uint8_t mode)
+{ assert(mode == ADC_MODE_SW_TRIGGER); return ADC_STATUS_OK; }
+uint32_t ADC_SetChannel(uint8_t channel)
+{ assert(channel == ADC_CHANNEL_12); return ADC_STATUS_OK; }
+uint32_t ADC_StartConversion(void)
+{ Test_AdcStartCount++; return ADC_STATUS_OK; }
+uint32_t ADC_IsConversionComplete(void) { return 1U; }
+uint16_t ADC_GetResult(void) { return Test_AdcValue; }
 
 void disable_WDOG(void) {}
 void init_MCU(void) {}
@@ -126,14 +105,7 @@ Std_ReturnType CanTpLoopbackTest_SetEnabled(uint8_t enable)
 Std_ReturnType Com_Init(void)
 {
     Com_RxIndicationCount = 0U;
-    Test_RxSignalUpdateCount = 0U;
     return E_OK;
-}
-
-uint32_t Com_GetRxSignalUpdateCount(PduIdType signalId)
-{
-    assert(signalId == COM_SIGNAL_RX_LED_COMMAND);
-    return Test_RxSignalUpdateCount;
 }
 
 uint8_t NodeApp_GetReadyCount(void)
@@ -169,7 +141,7 @@ Std_ReturnType NodeApp_Transmit(const uint8_t *data, PduLengthType length)
 Std_ReturnType Com_SendSignal(PduIdType signalId, const void *value)
 {
     assert(signalId == COM_SIGNAL_LED_COMMAND && value != NULL);
-    assert(Test_SendCount < 8U);
+    assert(Test_SendCount < 32U);
     memcpy(&Test_SentCommands[Test_SendCount], value, sizeof(uint32_t));
     Test_SendCount++;
     return E_OK;
@@ -203,7 +175,6 @@ void Can_MainFunction_Read(void)
         Test_RxInjected = 1U;
         Test_RxValid = 1U;
         Com_RxIndicationCount++;
-        Test_RxSignalUpdateCount++;
     }
 }
 

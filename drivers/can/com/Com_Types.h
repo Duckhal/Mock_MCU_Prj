@@ -17,6 +17,7 @@ typedef struct
 
     uint16_t slotStartBit;
     uint16_t slotLength;
+    uint8_t useUpdateBit;
 } Com_SignalConfigType;
 
 typedef struct

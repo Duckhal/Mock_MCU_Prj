@@ -5,6 +5,16 @@
 
 #define COM_MAX_IPDU_LENGTH (8U)
 
+/* Return the configured byte-0 header shared by the Tx and Rx LED I-PDUs. */
+static uint8_t Com_GetGlobalId(void)
+{
+#if COM_GLOBAL_ID_ENABLED != 0U
+    return (uint8_t)COM_SIGNAL_LED_COMMAND;
+#else
+    return 0U;
+#endif
+}
+
 typedef struct
 {
     uint16_t counter;
@@ -223,6 +233,7 @@ static Std_ReturnType Com_ValidateConfig(void)
         uint16_t memberships = 0U;
         if ((Com_FindSignal(s->signalId) == NULL) || (p == NULL) || (g == NULL) ||
             (s->slotLength < 8U) || (s->slotLength > 32U) ||
+            (s->useUpdateBit > 1U) ||
             ((s->slotStartBit % 8U) != 0U) || ((s->slotLength % 8U) != 0U) ||
             ((uint32_t)s->slotStartBit + s->slotLength > (uint32_t)p->length * 8U))
         { 
@@ -253,7 +264,7 @@ static Std_ReturnType Com_ValidateConfig(void)
     return E_OK;
 }
 
-/* Clear only the Update Bit at the start of each slot in one Tx group. */
+/* Clear enabled Update Bits while leaving raw Signal slots unchanged. */
 static void Com_ClearUpdateBits(uint16_t ipduIndex)
 {
     const Com_SignalGroupConfigType *g =
@@ -262,7 +273,10 @@ static void Com_ClearUpdateBits(uint16_t ipduIndex)
     for (i = 0U; i < g->numSignals; i++)
     {
         const Com_SignalConfigType *s = Com_FindSignal(g->signalList[i]);
-        Com_Buffer[ipduIndex][s->slotStartBit / 8U] &= (uint8_t)~1U;
+        if (s->useUpdateBit != 0U)
+        {
+            Com_Buffer[ipduIndex][s->slotStartBit / 8U] &= (uint8_t)~1U;
+        }
     }
 }
 
@@ -286,6 +300,7 @@ Std_ReturnType Com_Init(void)
     Com_TxDropCount = 0U;
     for (i = 0U; i < COM_NUM_IPDUS; i++)
     {
+        Com_Buffer[i][0] = Com_GetGlobalId();
         if (Com_IPduConfig[i].direction == COM_IPDU_TX)
         { 
             Com_TxRuntime[i].counter = Com_IPduConfig[i].initialOffsetTicks; 
@@ -296,7 +311,7 @@ Std_ReturnType Com_Init(void)
     return E_OK;
 }
 
-/* Copy a uint32_t input, encode its Tx Signal slot and set U without sending. */
+/* Copy a uint32_t input and encode its configured raw or Update-Bit slot. */
 Std_ReturnType Com_SendSignal(PduIdType SignalId, const void *SignalDataPtr)
 {
     const Com_SignalConfigType *s;
@@ -314,12 +329,17 @@ Std_ReturnType Com_SendSignal(PduIdType SignalId, const void *SignalDataPtr)
         return E_NOT_OK; 
     }
     memcpy(&value, SignalDataPtr, sizeof(value));
-    bits = (uint8_t)(s->slotLength - 1U);
-    if (value > ((1UL << bits) - 1UL)) 
+    bits = (uint8_t)(s->slotLength - ((s->useUpdateBit != 0U) ? 1U : 0U));
+    if ((bits < 32U) && (value > ((1UL << bits) - 1UL)))
     { 
         return E_NOT_OK; 
     }
-    Com_WriteSlot(Com_Buffer[index], s, (value << 1U) | 1U);
+    if (s->useUpdateBit != 0U)
+    {
+        value = (value << 1U) | 1U;
+    }
+    Com_Buffer[index][0] = Com_GetGlobalId();
+    Com_WriteSlot(Com_Buffer[index], s, value);
     return E_OK;
 }
 
@@ -341,7 +361,7 @@ Std_ReturnType Com_ReceiveSignal(PduIdType SignalId, void *SignalDataPtr)
         return E_NOT_OK; 
     }
     slot = Com_ReadSlot(Com_Buffer[index], s);
-    value = slot >> 1U;
+    value = (s->useUpdateBit != 0U) ? (slot >> 1U) : slot;
     memcpy(SignalDataPtr, &value, sizeof(value));
     return E_OK;
 }
@@ -443,6 +463,12 @@ void Com_RxIndication(PduIdType ComRxPduId, const PduInfoType *PduInfoPtr)
         }
         return;
     }
+    if (PduInfoPtr->SduDataPtr[0] != Com_GetGlobalId())
+    {
+        Com_Log(COM_LOG_RX_REJECTED, ComRxPduId,
+                PduInfoPtr->SduDataPtr[0]);
+        return;
+    }
     memcpy(Com_Buffer[index], PduInfoPtr->SduDataPtr, p->length);
     Com_RxValid[index] = 1U;
     group = Com_FindGroup(p->signalGroupId);
@@ -454,7 +480,8 @@ void Com_RxIndication(PduIdType ComRxPduId, const PduInfoType *PduInfoPtr)
             Com_FindSignal(group->signalList[signalListIndex]);
         uint16_t signalIndex =
             (uint16_t)(signal - &Com_SignalConfig[0]);
-        if ((Com_ReadSlot(PduInfoPtr->SduDataPtr, signal) & 1U) != 0U)
+        if ((signal->useUpdateBit != 0U) &&
+            ((Com_ReadSlot(PduInfoPtr->SduDataPtr, signal) & 1U) != 0U))
         {
             Com_RxSignalUpdateCount[signalIndex]++;
         }

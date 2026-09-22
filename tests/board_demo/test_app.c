@@ -40,13 +40,12 @@ int main(void)
     assert(Test_UartRawTxLength == sizeof(rxData));
     assert(memcmp(Test_UartRawTx, rxData, sizeof(rxData)) == 0);
 
-    App_NextCommand = 0x100U;
+    g_AppLedMode = (uint8_t)(COM_LED_MODE_MAX + 1U);
     assert(App_MainFunction(2U) == E_NOT_OK);
     assert(g_AppRuntimeStatus == APP_RUNTIME_STATE_CORRUPTION);
     assert(g_AppStateCorruptionCount == 1U);
-    assert(g_AppStateErrorMask == APP_STATE_ERROR_TX_COMMAND);
-    assert(g_AppLastInvalidTxCommand == 0x100U);
+    assert(g_AppStateErrorMask == APP_STATE_ERROR_LED_COMMAND);
 
-    puts("PASS: app owns CanTp messages and rejects corrupt UART command state.");
+    puts("PASS: app owns CanTp messages and rejects corrupt LED command state.");
     return 0;
 }
