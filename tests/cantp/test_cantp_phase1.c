@@ -6,7 +6,7 @@
 #include "../../drivers/can/cantp/Cantp_Cfg.h"
 #include "../../drivers/can/canif/CanIf.h"
 
-#define TEST_MAX_FRAMES (16U)
+#define TEST_MAX_FRAMES (32U)
 
 typedef struct
 {
@@ -18,6 +18,9 @@ typedef struct
 static uint8_t Test_Source[CANTP_MAX_NSDU_LENGTH];
 static Test_FrameType Test_Frames[TEST_MAX_FRAMES];
 static uint8_t Test_FrameCount;
+static Std_ReturnType Test_TransmitResults[TEST_MAX_FRAMES];
+static uint8_t Test_TransmitResultCount;
+static uint8_t Test_TransmitResultIndex;
 static uint32_t Test_Tick;
 static uint32_t Test_CopyTxCalls;
 static uint32_t Test_TxFinalCalls;
@@ -28,6 +31,7 @@ static uint32_t Test_RxFinalCalls;
 static Std_ReturnType Test_RxFinalResult;
 static uint8_t Test_RxData[CANTP_MAX_NSDU_LENGTH];
 static PduLengthType Test_RxLength;
+static uint8_t Test_RxReserved;
 
 /** Capture each immutable Data or FC frame accepted by the fake CanIf. */
 Std_ReturnType CanIf_Transmit(PduIdType TxPduId,
@@ -41,6 +45,10 @@ Std_ReturnType CanIf_Transmit(PduIdType TxPduId,
     frame->id = TxPduId;
     frame->tick = Test_Tick;
     memcpy(frame->bytes, PduInfoPtr->SduDataPtr, CANTP_FRAME_LENGTH);
+    if (Test_TransmitResultIndex < Test_TransmitResultCount)
+    {
+        return Test_TransmitResults[Test_TransmitResultIndex++];
+    }
     return E_OK;
 }
 
@@ -70,6 +78,8 @@ BufReq_ReturnType PduR_CanTpStartOfReception(PduIdType RxNSduId,
 {
     assert(RxNSduId == CANTP_RX_NSDU);
     assert(TotalLength >= 1U && TotalLength <= CANTP_MAX_NSDU_LENGTH);
+    assert(Test_RxReserved == 0U);
+    Test_RxReserved = 1U;
     Test_StartRxCalls++;
     Test_RxLength = TotalLength;
     return BUFREQ_OK;
@@ -93,6 +103,8 @@ void PduR_CanTpRxIndication(PduIdType RxNSduId,
 {
     assert(RxNSduId == CANTP_RX_NSDU);
     assert(Test_CopyRxCalls == ((Result == E_OK) ? 1U : 0U));
+    assert(Test_RxReserved != 0U);
+    Test_RxReserved = 0U;
     Test_RxFinalCalls++;
     Test_RxFinalResult = Result;
 }
@@ -104,6 +116,9 @@ static void Test_Reset(void)
     memset(Test_Frames, 0, sizeof(Test_Frames));
     memset(Test_RxData, 0, sizeof(Test_RxData));
     Test_FrameCount = 0U;
+    Test_TransmitResultCount = 0U;
+    Test_TransmitResultIndex = 0U;
+    memset(Test_TransmitResults, 0, sizeof(Test_TransmitResults));
     Test_Tick = 0U;
     Test_CopyTxCalls = 0U;
     Test_TxFinalCalls = 0U;
@@ -113,6 +128,7 @@ static void Test_Reset(void)
     Test_RxFinalCalls = 0U;
     Test_RxFinalResult = E_NOT_OK;
     Test_RxLength = 0U;
+    Test_RxReserved = 0U;
     assert(CanTp_Init() == E_OK);
 }
 
@@ -236,6 +252,8 @@ static void Test_TxVectors(void)
 /** Confirm each generated CTS before injecting the next CF block. */
 static void Test_ConfirmNewFcFrames(uint8_t *Processed)
 {
+    Test_Tick++;
+    CanTp_MainFunction();
     while (*Processed < Test_FrameCount)
     {
         const uint8_t expected[8] =

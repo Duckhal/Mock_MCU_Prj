@@ -4,7 +4,7 @@
 #include "Can_Types.h"
 #include "Can_Cfg.h"
 
-/**
+/*
  * @brief Initialize the temporary CAN0-only polling driver.
  * @pre Initialize the board's 8 MHz SOSC, CAN0 pins and transceiver first
  *      (disable_WDOG() and init_MCU() in the current BSP).
@@ -19,7 +19,7 @@
  */
 Can_ReturnType Can_Init(void);
 
-/**
+/*
  * @brief Accept one CAN0 transmission without waiting for physical completion.
  * @param Hth Configured Tx HOH ID; resolved with its controller, independent of index.
  * @param PduInfo Standard CAN ID, DLC 0..8, software PDU handle and payload.
@@ -31,7 +31,7 @@ Can_ReturnType Can_Init(void);
  */
 Can_ReturnType Can_Write(Can_HwHandleType Hth, const Can_PduType *PduInfo);
 
-/**
+/*
  * @brief Poll CAN0 Tx completion and confirm each accepted request once.
  * @details Frees MB8 before CanIf_TxConfirmation(swPduHandle). Hardware faults
  *          and aborts never produce success confirmations. Bus-off is latched;
@@ -40,7 +40,7 @@ Can_ReturnType Can_Write(Can_HwHandleType Hth, const Can_PduType *PduInfo);
  */
 void Can_MainFunction_Write(void);
 
-/**
+/*
  * @brief Poll one CAN0 frame and deliver the configured Rx HOH plus CAN ID to CanIf.
  * @details CanIf must supply CanIf_RxIndication(Can_HwHandleType Hrh,
  *          const Can_RxPduType *RxPdu). RxPdu and dataPtr are valid only during

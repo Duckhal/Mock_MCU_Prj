@@ -7,10 +7,14 @@
 
 extern volatile CanTp_LogRecordType CanTp_LogRecords[CANTP_LOG_CAPACITY];
 extern volatile uint32_t CanTp_LogSequence;
+extern volatile CanTp_AbortReasonType CanTp_LastTxAbortReason;
+extern volatile CanTp_AbortReasonType CanTp_LastRxAbortReason;
+extern volatile uint32_t CanTp_TxAbortCount;
+extern volatile uint32_t CanTp_RxAbortCount;
 
 /*
  * @brief Initialize the mock CanTp module.
- * @return E_OK when the fixed Phase-1 configuration is valid; otherwise E_NOT_OK.
+ * @return E_OK when the fixed Phase-2 configuration is valid; otherwise E_NOT_OK.
  */
 Std_ReturnType CanTp_Init(void);
 
@@ -41,9 +45,10 @@ void CanTp_RxIndication(PduIdType RxNPduId,
 void CanTp_TxConfirmation(PduIdType TxNPduId);
 
 /*
- * @brief Advance Phase-1 STmin scheduling and submit at most one Data frame.
+ * @brief Advance retry, timeout and STmin processing by one millisecond.
  *
- * Retry and timeout processing is added in Phase 2.
+ * The integration scheduler shall call this function exactly once per 1 ms
+ * tick after dispatching lower-layer confirmations and received frames.
  */
 void CanTp_MainFunction(void);
 

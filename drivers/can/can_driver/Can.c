@@ -26,9 +26,9 @@
 #define CAN_LOG_CAPACITY            (16U)
 
 /* CanIf must provide these callbacks when the communication stack is linked. */
-/** Notify CanIf of the software PDU handle whose accepted request completed. */
+/* Notify CanIf of the software PDU handle whose accepted request completed. */
 extern void CanIf_TxConfirmation(PduIdType TxPduId);
-/** Deliver one frame; RxPdu and its bytes are valid only during this call. */
+/* Deliver one frame; RxPdu and its bytes are valid only during this call. */
 extern void CanIf_RxIndication(Can_HwHandleType Hrh, const Can_RxPduType *RxPdu);
 
 typedef enum
@@ -100,7 +100,7 @@ static const Can_HardwareObjectConfigType *Can_RxObject = NULL;
 static volatile Can_LogRecordType Can_LogRecords[CAN_LOG_CAPACITY];
 static volatile uint32_t Can_LogSequence = 0U;
 
-/** Store a bounded diagnostic event; detail holds a reason, stage or HW snapshot. */
+/* Store a bounded diagnostic event; detail holds a reason, stage or HW snapshot. */
 static void Can_Log(Can_LogEventType event, uint32_t detail)
 {
     uint32_t sequence = Can_LogSequence;
@@ -114,7 +114,7 @@ static void Can_Log(Can_LogEventType event, uint32_t detail)
     Can_LogSequence = sequence + 1U;
 }
 
-/** Resolve a controller ID exactly once; missing or duplicate IDs return NULL. */
+/* Resolve a controller ID exactly once; missing or duplicate IDs return NULL. */
 static const Can_ControllerConfigType *Can_GetController(Can_ControllerIdType id)
 {
     const Can_ControllerConfigType *controller = NULL;
@@ -134,7 +134,7 @@ static const Can_ControllerConfigType *Can_GetController(Can_ControllerIdType id
     return controller;
 }
 
-/** Resolve the shared Tx/Rx HOH namespace to one object and existing controller. */
+/* Resolve the shared Tx/Rx HOH namespace to one object and existing controller. */
 static const Can_HardwareObjectConfigType *Can_GetHardwareObject(
     Can_HwHandleType handle, Can_ObjectType expectedType)
 {
@@ -160,7 +160,7 @@ static const Can_HardwareObjectConfigType *Can_GetHardwareObject(
     return object;
 }
 
-/** Log the configuration reason and offending table index without touching HW. */
+/* Log the configuration reason and offending table index without touching HW. */
 static Can_ReturnType Can_RejectConfig(Can_ConfigErrorType reason, size_t index)
 {
     /* Upper 16 bits identify the reason; lower 16 bits identify the entry. */
@@ -169,7 +169,7 @@ static Can_ReturnType Can_RejectConfig(Can_ConfigErrorType reason, size_t index)
     return CAN_NOT_OK;
 }
 
-/** Validate every controller/HOH and reject profiles unsupported by fixed CAN0 HW. */
+/* Validate every controller/HOH and reject profiles unsupported by fixed CAN0 HW. */
 static Can_ReturnType Can_ValidateConfig(void)
 {
     size_t index;
@@ -238,7 +238,7 @@ static Can_ReturnType Can_ValidateConfig(void)
     return CAN_OK;
 }
 
-/** Wait a bounded number of reads for masked bits; return zero on timeout. */
+/* Wait a bounded number of reads for masked bits; return zero on timeout. */
 static uint8_t Can_WaitRegister(const volatile uint32_t *address,
                                 uint32_t mask, uint32_t expected)
 {
@@ -254,7 +254,7 @@ static uint8_t Can_WaitRegister(const volatile uint32_t *address,
     return 0U;
 }
 
-/** Latch a fatal fault and request Freeze without confirming a pending Tx. */
+/* Latch a fatal fault and request Freeze without confirming a pending Tx. */
 static void Can_Stop(Can_LogEventType event, uint32_t detail)
 {
     Can_State = CAN_STATE_ERROR;
@@ -263,7 +263,7 @@ static void Can_Stop(Can_LogEventType event, uint32_t detail)
     Can_Log(event, detail);
 }
 
-/** Check HW health; log transient CAN errors and latch bus-off or lost readiness. */
+/* Check HW health; log transient CAN errors and latch bus-off or lost readiness. */
 static uint8_t Can_CheckController(void)
 {
     uint32_t status = CAN0->ESR1;
@@ -294,7 +294,7 @@ static uint8_t Can_CheckController(void)
     return 1U;
 }
 
-/** Wait for an init handshake; latch ERROR and record its stage on timeout. */
+/* Wait for an init handshake; latch ERROR and record its stage on timeout. */
 static Can_ReturnType Can_WaitInitStatus(uint32_t mask, uint32_t expected,
                                        Can_InitStageType stage)
 {
@@ -306,14 +306,14 @@ static Can_ReturnType Can_WaitInitStatus(uint32_t mask, uint32_t expected,
     return CAN_OK;
 }
 
-/** Request Freeze on an enabled CAN0 and wait for FRZACK with a bounded timeout. */
+/* Request Freeze on an enabled CAN0 and wait for FRZACK with a bounded timeout. */
 static Can_ReturnType Can_EnterFreezeMode(Can_InitStageType stage)
 {
     CAN0->MCR |= CAN_MCR_FRZ_MASK | CAN_MCR_HALT_MASK;
     return Can_WaitInitStatus(CAN_MCR_FRZACK_MASK, CAN_MCR_FRZACK_MASK, stage);
 }
 
-/** Enter Disable safely, wait for LPMACK, then select the 8 MHz oscillator clock. */
+/* Enter Disable safely, wait for LPMACK, then select the 8 MHz oscillator clock. */
 static Can_ReturnType Can_DisableController(void)
 {
     if ((CAN0->MCR & CAN_MCR_MDIS_MASK) == 0U)
@@ -334,7 +334,7 @@ static Can_ReturnType Can_DisableController(void)
     return CAN_OK;
 }
 
-/** Enable CAN0 with Freeze requested and wait until Disable mode is exited. */
+/* Enable CAN0 with Freeze requested and wait until Disable mode is exited. */
 static Can_ReturnType Can_EnableController(void)
 {
     CAN0->MCR = (CAN0->MCR & ~CAN_MCR_MDIS_MASK) |
@@ -342,7 +342,7 @@ static Can_ReturnType Can_EnableController(void)
     return Can_WaitInitStatus(CAN_MCR_LPMACK_MASK, 0U, CAN_INIT_ENABLE_ACK);
 }
 
-/** Soft-reset stale protocol state and wait for reset completion and Freeze ACK. */
+/* Soft-reset stale protocol state and wait for reset completion and Freeze ACK. */
 static Can_ReturnType Can_ResetController(void)
 {
     CAN0->MCR |= CAN_MCR_SOFTRST_MASK;
@@ -355,7 +355,7 @@ static Can_ReturnType Can_ResetController(void)
                              CAN_INIT_RESET_FREEZE_ACK);
 }
 
-/** Configure the fixed 500 kbit/s Classical CAN profile while CAN0 is frozen. */
+/* Configure the fixed 500 kbit/s Classical CAN profile while CAN0 is frozen. */
 static void Can_ConfigureController(void)
 {
     /* Preserve reserved bits; disable FIFO, FD, DMA, priority and PN modes. */
@@ -376,7 +376,7 @@ static void Can_ConfigureController(void)
     CAN0->IMASK1 = 0U;
 }
 
-/** Initialize embedded RAM and masks, arm Tx MB8/Rx MB9 and clear stale flags. */
+/* Initialize embedded RAM and masks, arm Tx MB8/Rx MB9 and clear stale flags. */
 static void Can_InitMessageBuffers(void)
 {
     uint32_t index;
@@ -398,7 +398,7 @@ static void Can_InitMessageBuffers(void)
     CAN0->ESR1 = CAN_ESR1_ERRINT_MASK | CAN_ESR1_BOFFINT_MASK;
 }
 
-/** Exit Freeze and wait for both FRZACK and NOTRDY to clear before bus use. */
+/* Exit Freeze and wait for both FRZACK and NOTRDY to clear before bus use. */
 static Can_ReturnType Can_ExitFreezeMode(void)
 {
     CAN0->MCR &= ~(CAN_MCR_HALT_MASK | CAN_MCR_FRZ_MASK);
@@ -409,7 +409,7 @@ static Can_ReturnType Can_ExitFreezeMode(void)
     return Can_WaitInitStatus(CAN_MCR_NOTRDY_MASK, 0U, CAN_INIT_READY_ACK);
 }
 
-/**
+/*
  * Initialize CAN0 for 500 kbit/s standard Classical CAN with the 8 MHz SOSC.
  * MB8 transmits and MB9 accepts all standard IDs; CanIf filters logical PDUs.
  * BSP setup must precede this call. Static helpers implement each hardware stage.
@@ -457,7 +457,7 @@ Can_ReturnType Can_Init(void)
     return CAN_OK;
 }
 
-/**
+/*
  * Resolve a configured Tx HOH and accept one CAN0/MB8 frame without bus waiting.
  * Copy all bytes before CAN_OK; retain the software PDU handle for completion.
  * Return CAN_BUSY until polling frees MB8, or CAN_NOT_OK for invalid input/fault.
@@ -519,7 +519,7 @@ Can_ReturnType Can_Write(Can_HwHandleType Hth, const Can_PduType *PduInfo)
     return CAN_OK;
 }
 
-/** Poll MB8 completion once; release it before confirming the saved PDU handle. */
+/* Poll MB8 completion once; release it before confirming the saved PDU handle. */
 void Can_MainFunction_Write(void)
 {
     uint32_t code;
@@ -549,7 +549,7 @@ void Can_MainFunction_Write(void)
     CanIf_TxConfirmation(completedHandle);
 }
 
-/**
+/*
  * Poll MB9 once and deliver a standard Classical frame with its configured HRH.
  * Clear IFLAG before reading TIMER to unlock the MB, as required by the RM.
  * Do not force RX_EMPTY after servicing: hardware keeps the MB receivable.

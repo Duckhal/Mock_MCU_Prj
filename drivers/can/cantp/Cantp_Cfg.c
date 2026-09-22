@@ -1,6 +1,6 @@
 #include "Cantp_Cfg.h"
 
-/** Configure one dedicated bidirectional Phase-1 CanTp connection. */
+/* Configure one dedicated bidirectional Phase-2 CanTp connection. */
 const CanTp_ConnectionConfigType
 CanTp_ConnectionConfig[CANTP_NUM_CONNECTIONS] =
 {

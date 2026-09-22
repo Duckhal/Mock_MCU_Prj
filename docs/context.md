@@ -1,5 +1,23 @@
 # Project Context
 
+## CanTp Phase 2 implementation (2026-09-21)
+
+- `drivers/can/cantp/Cantp.c` now retries rejected Data and FC N-PDUs on
+  consecutive 1 ms ticks, with one initial attempt plus three retries. The
+  prepared eight-byte frame and Tx progress stay unchanged until matching
+  local confirmation.
+- Separate N_As, N_Ar, N_Bs and N_Cr timers start and stop at the events in
+  section 9 of `requirements/CanTp_Student_Guide.md`. N_As/N_Ar abort the
+  logical session while retaining the accepted lower-layer pending lock;
+  late confirmation only releases that lock.
+- Tx/Rx abort paths report final failure once and expose debugger evidence in
+  `CanTp_LastTxAbortReason`, `CanTp_LastRxAbortReason`, and the abort counters.
+- `tests/cantp/run_tests.ps1` passes T01-T08, T13, FC retry/N_Ar checks,
+  routing checks and strict ARM compilation. CAN driver and CanIf regressions
+  pass. `build/cantp_phase2/Mock_MCU_Prj_CanTp_Phase2.elf` links with zero
+  undefined symbols (text 26964, data 1072, bss 6472). Physical-board timing
+  remains unverified.
+
 ## UART corruption guard (2026-09-21)
 
 - A physical-board trace showed valid UART lines followed by binary bytes and

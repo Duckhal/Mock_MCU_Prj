@@ -8,9 +8,9 @@
 #define CANIF_LOG_CAPACITY       (16U)
 
 /* PduR must provide these callbacks when the upper communication stack is linked. */
-/** Forward a completed local CanIf Tx PDU handle to the PduR route lookup. */
+/* Forward a completed local CanIf Tx PDU handle to the PduR route lookup. */
 extern void PduR_CanIfTxConfirmation(PduIdType TxPduId);
-/** Forward a local Rx PDU and borrowed bytes; PduR must consume/copy them now. */
+/* Forward a local Rx PDU and borrowed bytes; PduR must consume/copy them now. */
 extern void PduR_CanIfRxIndication(PduIdType RxPduId, const PduInfoType *PduInfoPtr);
 
 typedef enum
@@ -55,7 +55,7 @@ static uint8_t CanIf_Initialized = 0U;
 static volatile CanIf_LogRecordType CanIf_LogRecords[CANIF_LOG_CAPACITY];
 static volatile uint32_t CanIf_LogSequence = 0U;
 
-/** Append an event; detail contains a validation reason or driver return value. */
+/* Append an event; detail contains a validation reason or driver return value. */
 static void CanIf_Log(CanIf_LogEventType event, PduIdType pduId,
                       Can_IdType canId, Can_HwHandleType hoh, uint32_t detail)
 {
@@ -71,7 +71,7 @@ static void CanIf_Log(CanIf_LogEventType event, PduIdType pduId,
     CanIf_LogSequence = sequence + 1U;
 }
 
-/** Resolve one unique HOH of the expected type with one existing controller. */
+/* Resolve one unique HOH of the expected type with one existing controller. */
 static const Can_HardwareObjectConfigType *CanIf_GetHardwareObject(
     Can_HwHandleType handle, Can_ObjectType expectedType)
 {
@@ -105,7 +105,7 @@ static const Can_HardwareObjectConfigType *CanIf_GetHardwareObject(
     return (controllers == 1U) ? object : NULL;
 }
 
-/** Find a Tx entry by its configured local PDU ID, without assuming ID=index. */
+/* Find a Tx entry by its configured local PDU ID, without assuming ID=index. */
 static const CanIf_TxPduConfigType *CanIf_GetTxPdu(PduIdType txPduId)
 {
     size_t index;
@@ -119,7 +119,7 @@ static const CanIf_TxPduConfigType *CanIf_GetTxPdu(PduIdType txPduId)
     return NULL;
 }
 
-/** Resolve the BasicCAN receive key HRH plus CAN ID to one local Rx PDU. */
+/* Resolve the BasicCAN receive key HRH plus CAN ID to one local Rx PDU. */
 static const CanIf_RxPduConfigType *CanIf_GetRxPdu(
     Can_HwHandleType hrh, Can_IdType canId)
 {
@@ -135,21 +135,21 @@ static const CanIf_RxPduConfigType *CanIf_GetRxPdu(
     return NULL;
 }
 
-/** Return whether a Tx L-PDU belongs to CanTp and therefore requires DLC 8. */
+/* Return whether a Tx L-PDU belongs to CanTp and therefore requires DLC 8. */
 static uint8_t CanIf_IsCanTpTxPdu(PduIdType txPduId)
 {
     return (uint8_t)((txPduId == CANIF_TX_PDU_CANTP_DATA) ||
                      (txPduId == CANIF_TX_PDU_CANTP_FC));
 }
 
-/** Return whether an Rx L-PDU belongs to CanTp and therefore requires DLC 8. */
+/* Return whether an Rx L-PDU belongs to CanTp and therefore requires DLC 8. */
 static uint8_t CanIf_IsCanTpRxPdu(PduIdType rxPduId)
 {
     return (uint8_t)((rxPduId == CANIF_RX_PDU_CANTP_DATA) ||
                      (rxPduId == CANIF_RX_PDU_CANTP_FC));
 }
 
-/** Validate Tx IDs, Direct Binding uniqueness and references to Tx hardware. */
+/* Validate Tx IDs, Direct Binding uniqueness and references to Tx hardware. */
 static Std_ReturnType CanIf_ValidateTxConfig(void)
 {
     size_t index;
@@ -188,7 +188,7 @@ static Std_ReturnType CanIf_ValidateTxConfig(void)
     return E_OK;
 }
 
-/** Validate Rx IDs, unique HRH/CAN ID keys and references to Rx hardware. */
+/* Validate Rx IDs, unique HRH/CAN ID keys and references to Rx hardware. */
 static Std_ReturnType CanIf_ValidateRxConfig(void)
 {
     size_t index;
@@ -228,7 +228,7 @@ static Std_ReturnType CanIf_ValidateRxConfig(void)
     return E_OK;
 }
 
-/** Validate static tables and publish readiness; hardware init remains in CanDrv. */
+/* Validate static tables and publish readiness; hardware init remains in CanDrv. */
 Std_ReturnType CanIf_Init(void)
 {
     CanIf_Initialized = 0U;
@@ -241,7 +241,7 @@ Std_ReturnType CanIf_Init(void)
     return E_OK;
 }
 
-/** Map one local Tx PDU to CAN ID/HTH and ask the driver exactly once. */
+/* Map one local Tx PDU to CAN ID/HTH and ask the driver exactly once. */
 Std_ReturnType CanIf_Transmit(PduIdType TxPduId, const PduInfoType *PduInfoPtr)
 {
     const CanIf_TxPduConfigType *config;
@@ -294,7 +294,7 @@ Std_ReturnType CanIf_Transmit(PduIdType TxPduId, const PduInfoType *PduInfoPtr)
     return (result == CAN_OK) ? E_OK : E_NOT_OK;
 }
 
-/** Forward a valid completion handle; the driver owns exactly-once detection. */
+/* Forward a valid completion handle; the driver owns exactly-once detection. */
 void CanIf_TxConfirmation(PduIdType TxPduId)
 {
     const CanIf_TxPduConfigType *config;
@@ -314,7 +314,7 @@ void CanIf_TxConfirmation(PduIdType TxPduId)
     PduR_CanIfTxConfirmation(config->txPduId);
 }
 
-/** Validate an Rx frame, resolve HRH/CAN ID and synchronously forward its bytes. */
+/* Validate an Rx frame, resolve HRH/CAN ID and synchronously forward its bytes. */
 void CanIf_RxIndication(Can_HwHandleType Hrh, const Can_RxPduType *RxPdu)
 {
     const CanIf_RxPduConfigType *config;

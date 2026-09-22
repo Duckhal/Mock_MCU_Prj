@@ -39,7 +39,7 @@
 #define CANTP_PCI_SN_MASK              (0x0FU)
 #define CANTP_PADDING_BYTE             (0x00U)
 
-/* Phase-1 handles. Each group is a separate ID namespace. */
+/* CanTp handles. Each group is a separate ID namespace. */
 #define CANTP_TX_NSDU                  ((PduIdType)0U)
 #define CANTP_RX_NSDU                  ((PduIdType)0U)
 #define CANTP_TX_NPDU_DATA             ((PduIdType)0U)

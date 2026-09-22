@@ -40,6 +40,21 @@ typedef enum
     CANTP_FC_OVFLW = 2
 } CanTp_FlowStatusType;
 
+/* Observable reasons for the final Phase-2 session abort. */
+typedef enum
+{
+    CANTP_ABORT_NONE = 0,
+    CANTP_ABORT_DATA_RETRY_EXHAUSTED,
+    CANTP_ABORT_FC_RETRY_EXHAUSTED,
+    CANTP_ABORT_N_AS_TIMEOUT,
+    CANTP_ABORT_N_AR_TIMEOUT,
+    CANTP_ABORT_N_BS_TIMEOUT,
+    CANTP_ABORT_N_CR_TIMEOUT,
+    CANTP_ABORT_INVALID_FLOW_CONTROL,
+    CANTP_ABORT_SEQUENCE_NUMBER,
+    CANTP_ABORT_COPY_FAILURE
+} CanTp_AbortReasonType;
+
 /*
  * Static mapping for one dedicated bidirectional mock CanTp connection.
  * N-SDU, N-PDU and CanIf L-PDU handles are separate namespaces.
@@ -58,7 +73,7 @@ typedef struct
     PduIdType canIfRxFcPduId;
 } CanTp_ConnectionConfigType;
 
-/* Runtime data for one Phase-1 transmit session. */
+/* Runtime data for one Phase-2 transmit session. */
 typedef struct
 {
     CanTp_TxStateType state;
@@ -73,14 +88,17 @@ typedef struct
     uint8_t resultReported;
     uint8_t priorCfExists;
     uint8_t fcPermissionGranted;
+    uint8_t nAsActive;
+    uint8_t nBsActive;
     uint32_t lastCfConfirmedMs;
     uint32_t dataAttemptDueMs;
-    uint32_t txTimerStartMs;
+    uint32_t nAsStartMs;
+    uint32_t nBsStartMs;
     uint8_t preparedPayloadBytes;
     CanTp_FrameType preparedFrameType;
 } CanTp_TxRuntimeType;
 
-/* Runtime data for one Phase-1 receive session and its FC resource. */
+/* Runtime data for one Phase-2 receive session and its FC resource. */
 typedef struct
 {
     CanTp_RxStateType state;
@@ -95,12 +113,14 @@ typedef struct
     uint8_t fcRequestActive;
     uint8_t fcTxPending;
     uint8_t resultReported;
+    uint8_t nArActive;
+    uint8_t nCrActive;
     uint32_t fcAttemptDueMs;
-    uint32_t fcAcceptedAtMs;
-    uint32_t rxCrStartMs;
+    uint32_t nArStartMs;
+    uint32_t nCrStartMs;
 } CanTp_RxRuntimeType;
 
-/* Structured phase-1 events retained for debugger inspection. */
+/* Structured Phase-2 events retained for debugger inspection. */
 typedef enum
 {
     CANTP_LOG_INIT_OK = 0,
@@ -112,6 +132,9 @@ typedef enum
     CANTP_LOG_RX_FRAME,
     CANTP_LOG_FC_REQUEST,
     CANTP_LOG_RX_COMPLETE,
+    CANTP_LOG_RETRY,
+    CANTP_LOG_TIMEOUT,
+    CANTP_LOG_ABORT,
     CANTP_LOG_ERROR
 } CanTp_LogEventType;
 
