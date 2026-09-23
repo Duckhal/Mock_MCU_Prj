@@ -1,5 +1,27 @@
 # Project Context
 
+## UART image-size diagnosis (2026-09-24)
+
+- `ascii_cat_512B_showcase.txt` is 512 raw bytes and
+  `ascii_owl_2KB.txt` is 1984 raw bytes. Neither file contains the required
+  uint16-LE image-length prefix; their first two ASCII bytes decode as 8224
+  and 11822 instead of 512 and 1984.
+- The Master UART ring is configured with capacity 1024 and the ring-buffer
+  implementation reserves one slot, so usable capacity is 1023 bytes. A host
+  reproduction that injects the raw cat then raw owl records 975 UART
+  overflows and accepts only 1009 owl bytes because 14 cat bytes were still in
+  the ring.
+- Evidence is in `build/uart_overflow_diagnosis/repro.log`. Production source
+  was not changed. Correct PC input must prepend `00 02` for the 512-byte cat
+  or `C0 07` for the 1984-byte owl and pace blocks so CAN can drain the bounded
+  UART queue.
+- A 20 KiB Rx ring would hold the 16384-byte Mona Lisa plus its `00 40`
+  uint16-LE header, and it fits the current FLASH linker layout. It would add
+  19456 B to `.bss` and leave about 2344 B between the configured heap end and
+  stack limit. A 17 KiB ring is sufficient for this fixture and leaves about
+  5416 B. Either size is only a bounded workaround and still requires the
+  two-byte header.
+
 ## Current application baseline (2026-09-24)
 
 The active target is the three-ECU application in

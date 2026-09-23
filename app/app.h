@@ -12,7 +12,7 @@
 
 /* Select one fixed role for the firmware image being built. */
 #ifndef APP_BOARD_ROLE
-#define APP_BOARD_ROLE APP_ROLE_SLAVE1
+#define APP_BOARD_ROLE APP_ROLE_MASTER
 #endif
 #if ((APP_BOARD_ROLE != APP_ROLE_MASTER) && \
      (APP_BOARD_ROLE != APP_ROLE_SLAVE1) && \

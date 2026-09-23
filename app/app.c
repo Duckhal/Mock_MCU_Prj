@@ -10,7 +10,7 @@
 #include <string.h>
 
 #define APP_UART_BAUD             (115200U)
-#define APP_UART_RX_CAPACITY      (1024U)
+#define APP_UART_RX_CAPACITY      (17U * 1024U)
 #define APP_UART_TX_CAPACITY      (256U)
 #define APP_NETWORK_TASK_TICKS    (10U)
 
