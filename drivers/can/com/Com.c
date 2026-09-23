@@ -5,26 +5,18 @@
 
 #define COM_MAX_IPDU_LENGTH (8U)
 
-/* Return the configured byte-0 header shared by the Tx and Rx LED I-PDUs. */
-static uint8_t Com_GetGlobalId(void)
-{
-#if COM_GLOBAL_ID_ENABLED != 0U
-    return (uint8_t)COM_SIGNAL_LED_COMMAND;
-#else
-    return 0U;
-#endif
-}
-
 typedef struct
 {
     uint16_t counter;
     uint8_t pending;
     uint8_t retryCount;
+    uint8_t enabled;
 } Com_TxRuntimeType;
 
 static uint8_t Com_Initialized;
 static uint8_t Com_Buffer[COM_NUM_IPDUS][COM_MAX_IPDU_LENGTH];
 static uint8_t Com_RxValid[COM_NUM_IPDUS];
+static uint32_t Com_RxIPduIndicationCount[COM_NUM_IPDUS];
 static uint32_t Com_RxSignalUpdateCount[COM_NUM_SIGNALS];
 static Com_TxRuntimeType Com_TxRuntime[COM_NUM_IPDUS];
 volatile uint32_t Com_TxConfirmationCount;
@@ -293,6 +285,8 @@ Std_ReturnType Com_Init(void)
     }
     memset(Com_Buffer, 0, sizeof(Com_Buffer));
     memset(Com_RxValid, 0, sizeof(Com_RxValid));
+    memset(Com_RxIPduIndicationCount, 0,
+           sizeof(Com_RxIPduIndicationCount));
     memset(Com_RxSignalUpdateCount, 0, sizeof(Com_RxSignalUpdateCount));
     memset(Com_TxRuntime, 0, sizeof(Com_TxRuntime));
     Com_TxConfirmationCount = 0U;
@@ -300,7 +294,6 @@ Std_ReturnType Com_Init(void)
     Com_TxDropCount = 0U;
     for (i = 0U; i < COM_NUM_IPDUS; i++)
     {
-        Com_Buffer[i][0] = Com_GetGlobalId();
         if (Com_IPduConfig[i].direction == COM_IPDU_TX)
         { 
             Com_TxRuntime[i].counter = Com_IPduConfig[i].initialOffsetTicks; 
@@ -338,7 +331,6 @@ Std_ReturnType Com_SendSignal(PduIdType SignalId, const void *SignalDataPtr)
     {
         value = (value << 1U) | 1U;
     }
-    Com_Buffer[index][0] = Com_GetGlobalId();
     Com_WriteSlot(Com_Buffer[index], s, value);
     return E_OK;
 }
@@ -392,6 +384,45 @@ uint32_t Com_GetRxSignalUpdateCount(PduIdType SignalId)
     return Com_RxSignalUpdateCount[signalIndex];
 }
 
+/* Let application tasks observe one Rx I-PDU without conflating routes. */
+uint32_t Com_GetRxIPduIndicationCount(PduIdType ComRxPduId)
+{
+    uint16_t index;
+    const Com_IPduConfigType *ipdu;
+    if (Com_Initialized == 0U)
+    {
+        return 0U;
+    }
+    ipdu = Com_FindIPdu(ComRxPduId, &index);
+    if ((ipdu == NULL) || (ipdu->direction != COM_IPDU_RX))
+    {
+        return 0U;
+    }
+    return Com_RxIPduIndicationCount[index];
+}
+
+/* Select the periodic transmit I-PDU owned by the compiled ECU role. */
+Std_ReturnType Com_SetTxIPduEnabled(PduIdType ComTxPduId, uint8_t Enabled)
+{
+    uint16_t index;
+    const Com_IPduConfigType *ipdu;
+    if ((Com_Initialized == 0U) || (Enabled > 1U))
+    {
+        return E_NOT_OK;
+    }
+    ipdu = Com_FindIPdu(ComTxPduId, &index);
+    if ((ipdu == NULL) || (ipdu->direction != COM_IPDU_TX))
+    {
+        return E_NOT_OK;
+    }
+    Com_TxRuntime[index].enabled = Enabled;
+    Com_TxRuntime[index].pending = 0U;
+    Com_TxRuntime[index].retryCount = 0U;
+    Com_TxRuntime[index].counter = (Enabled != 0U) ?
+        ipdu->initialOffsetTicks : 0U;
+    return E_OK;
+}
+
 /* Decrement nominal timers, retry pending frames once and preserve U on drop. */
 void Com_MainFunctionTx(void)
 {
@@ -402,7 +433,7 @@ void Com_MainFunctionTx(void)
         Com_TxRuntimeType *rt = &Com_TxRuntime[i];
         const Com_IPduConfigType *p = &Com_IPduConfig[i];
         PduInfoType info;
-        if (p->direction != COM_IPDU_TX) 
+        if ((p->direction != COM_IPDU_TX) || (rt->enabled == 0U))
         { 
             continue; 
         }
@@ -463,12 +494,6 @@ void Com_RxIndication(PduIdType ComRxPduId, const PduInfoType *PduInfoPtr)
         }
         return;
     }
-    if (PduInfoPtr->SduDataPtr[0] != Com_GetGlobalId())
-    {
-        Com_Log(COM_LOG_RX_REJECTED, ComRxPduId,
-                PduInfoPtr->SduDataPtr[0]);
-        return;
-    }
     memcpy(Com_Buffer[index], PduInfoPtr->SduDataPtr, p->length);
     Com_RxValid[index] = 1U;
     group = Com_FindGroup(p->signalGroupId);
@@ -487,6 +512,7 @@ void Com_RxIndication(PduIdType ComRxPduId, const PduInfoType *PduInfoPtr)
         }
     }
     Com_RxIndicationCount++;
+    Com_RxIPduIndicationCount[index]++;
     Com_Log(COM_LOG_RX_ACCEPTED, ComRxPduId, p->length);
 }
 

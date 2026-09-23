@@ -1,105 +1,49 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+
+#define APP_BOARD_ROLE (0U)
 #include "app_host_fixture.h"
 
-/** Verify Tx UART multicast and Rx UART delivery for the shared-ID profile. */
+/** Verify uint16-LE PC framing and ordered 62-byte CanTp image chunks. */
 int main(void)
 {
-    static const uint8_t text[] = "Hello through CanTp";
-    static const uint8_t loopbackText[] = "LB";
-    uint8_t fullMessage[APP_MAX_LARGE_MESSAGE_LENGTH];
-    uint32_t tick;
+    uint8_t input[132U];
+    uint16_t index;
 
     (void)Test_RunApp;
+    (void)Test_InjectSlaveStatus;
+    (void)Test_InjectKeepAlive;
+    (void)Test_QueueNodeRx;
     assert(App_HardwareInit() == E_OK);
     assert(App_Init() == E_OK);
-    assert(g_AppModeTx == 0U);
 
-    /* A receiver board discards local PC input and never starts CanTp Tx. */
-    Test_InjectUart(text, (uint16_t)(sizeof(text) - 1U));
+    input[0] = 130U;
+    input[1] = 0U;
+    for (index = 0U; index < 130U; index++)
+    {
+        input[index + 2U] = (uint8_t)index;
+    }
+    Test_InjectUart(input, sizeof(input));
+
     assert(App_MainFunction(1U) == E_OK);
-    assert(App_MainFunction(21U) == E_OK);
-    assert(Test_NodeTransmitCount == 0U);
-    assert(Test_UartRawTxLength == 0U);
+    assert(Test_NodeTransmitCount == 1U && Test_NodeTxLength[0] == 62U);
+    Test_ConfirmNodeTx(E_OK);
+    assert(App_MainFunction(2U) == E_OK);
+    assert(Test_NodeTransmitCount == 2U && Test_NodeTxLength[1] == 62U);
+    Test_ConfirmNodeTx(E_OK);
+    assert(App_MainFunction(3U) == E_OK);
+    assert(Test_NodeTransmitCount == 3U && Test_NodeTxLength[2] == 6U);
+    Test_ConfirmNodeTx(E_OK);
+    assert(App_MainFunction(4U) == E_OK);
 
-    /* A sender closes the UART chunk after a 20 ms idle gap. */
-    g_AppModeTx = 1U;
-    Test_InjectUart(text, (uint16_t)(sizeof(text) - 1U));
-    assert(App_MainFunction(22U) == E_OK);
-    for (tick = 23U; tick < 42U; tick++)
-    {
-        assert(App_MainFunction(tick) == E_OK);
-    }
-    assert(Test_NodeTransmitCount == 0U);
-    assert(App_MainFunction(42U) == E_OK);
-    assert(Test_NodeTransmitCount == 1U);
-    assert(Test_NodeTxLength == (sizeof(text) - 1U));
-    assert(memcmp(Test_NodeTxData, text, sizeof(text) - 1U) == 0);
-    assert(g_AppCanTpTxPending == 1U);
-    assert(Test_UartRawTxLength == 0U);
-
-    /* Local final confirmation completes Tx without waiting for a data echo. */
-    NodeApp_LastTxResult = E_OK;
-    NodeApp_TxConfirmationCount++;
-    assert(App_MainFunction(43U) == E_OK);
+    assert(memcmp(Test_NodeTxData[0], &input[2], 62U) == 0);
+    assert(memcmp(Test_NodeTxData[1], &input[64], 62U) == 0);
+    assert(memcmp(Test_NodeTxData[2], &input[126], 6U) == 0);
+    assert(g_AppImageLength == 130U && g_AppImageBytesQueued == 130U);
+    assert(g_AppImageChunksCompleted == 3U);
     assert(g_AppCanTpTxPending == 0U);
-    assert(g_AppCanTpTxCompleted == 1U);
 
-    /* A sender consumes but does not print a received N-SDU. */
-    memcpy(Test_NodeRxData, Test_NodeTxData, Test_NodeTxLength);
-    Test_NodeRxLength = Test_NodeTxLength;
-    Test_NodeReadyCount = 1U;
-    assert(App_MainFunction(44U) == E_OK);
-    assert(g_AppCanTpRxIgnored == 1U);
-    assert(Test_UartRawTxLength == 0U);
-
-    /* Every receiver prints the exact reassembled N-SDU to its local PC. */
-    g_AppModeTx = 0U;
-    memcpy(Test_NodeRxData, text, sizeof(text) - 1U);
-    Test_NodeRxLength = sizeof(text) - 1U;
-    Test_NodeReadyCount = 1U;
-    assert(App_MainFunction(45U) == E_OK);
-    assert(Test_UartRawTxLength == (sizeof(text) - 1U));
-    assert(memcmp(Test_UartRawTx, text, sizeof(text) - 1U) == 0);
-    assert(g_AppCanTpRxUartDeliveries == 1U);
-    assert(g_AppCanTpRxMessages == 2U);
-
-    /* A full 62-byte chunk starts immediately on a sender board. */
-    for (tick = 0U; tick < sizeof(fullMessage); tick++)
-    {
-        fullMessage[tick] = (uint8_t)('A' + (tick % 26U));
-    }
-    g_AppModeTx = 1U;
-    Test_InjectUart(fullMessage, sizeof(fullMessage));
-    assert(App_MainFunction(46U) == E_OK);
-    assert(Test_NodeTransmitCount == 2U);
-    assert(Test_NodeTxLength == sizeof(fullMessage));
-    assert(memcmp(Test_NodeTxData, fullMessage, sizeof(fullMessage)) == 0);
-    assert(g_AppCanTpTxPending == 1U);
-
-    /* The optional fixture keeps the old single-board UART self-echo path. */
-    NodeApp_LastTxResult = E_OK;
-    NodeApp_TxConfirmationCount++;
-    assert(App_MainFunction(47U) == E_OK);
-    assert(App_SetCanTpLoopbackMode(2U) == E_NOT_OK);
-    assert(App_SetCanTpLoopbackMode(1U) == E_OK);
-    g_AppModeTx = 0U;
-    Test_InjectUart(loopbackText, sizeof(loopbackText) - 1U);
-    assert(App_MainFunction(48U) == E_OK);
-    assert(App_MainFunction(68U) == E_OK);
-    assert(Test_NodeTransmitCount == 3U);
-    memcpy(Test_NodeRxData, loopbackText, sizeof(loopbackText) - 1U);
-    Test_NodeRxLength = sizeof(loopbackText) - 1U;
-    Test_NodeReadyCount = 1U;
-    NodeApp_LastTxResult = E_OK;
-    NodeApp_TxConfirmationCount++;
-    assert(App_MainFunction(69U) == E_OK);
-    assert(Test_UartRawTxLength ==
-           ((sizeof(text) - 1U) + (sizeof(loopbackText) - 1U)));
-    assert(memcmp(&Test_UartRawTx[sizeof(text) - 1U], loopbackText,
-                  sizeof(loopbackText) - 1U) == 0);
-
-    puts("PASS: multi-board CanTp roles and optional UART loopback pass.");
+    puts("PASS: MASTER frames one PC image into ordered 62/62/6-byte CanTp chunks.");
     return 0;
 }

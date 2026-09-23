@@ -3,8 +3,8 @@
 
 #include "PduR_Types.h"
 
-#define PDUR_NUM_TX_ROUTES    (1U)
-#define PDUR_NUM_RX_ROUTES    (1U)
+#define PDUR_NUM_TX_ROUTES    (3U)
+#define PDUR_NUM_RX_ROUTES    (3U)
 #define PDUR_NUM_CANTP_TX_ROUTES (1U)
 #define PDUR_NUM_CANTP_RX_ROUTES (1U)
 

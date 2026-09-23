@@ -1,20 +1,22 @@
 #include <assert.h>
 #include <stdio.h>
 
-#include "../../drivers/can/canif/CanIf_Cfg.h"
+#include "../../drivers/can/canif/CanIf_Cfg.c"
 
-/** Verify the production COM and dedicated CanTp Data/FC CAN identifiers. */
+/** Verify all production COM and CanTp CAN identifier bindings. */
 int main(void)
 {
-    assert(CANIF_NUM_TX_PDUS == 3U && CANIF_NUM_RX_PDUS == 3U);
-    assert(CanIf_TxPduConfig[0].txPduId == CANIF_TX_PDU_VEHICLE_STATUS);
-    assert(CanIf_RxPduConfig[0].rxPduId == CANIF_RX_PDU_VEHICLE_STATUS);
-    assert(CanIf_TxPduConfig[0].canId == 0x100U);
-    assert(CanIf_RxPduConfig[0].canId == 0x100U);
-    assert(CanIf_TxPduConfig[1].canId == 0x650U);
-    assert(CanIf_RxPduConfig[1].canId == 0x650U);
-    assert(CanIf_TxPduConfig[2].canId == 0x658U);
-    assert(CanIf_RxPduConfig[2].canId == 0x658U);
-    puts("PASS: production CanIf maps COM 0x100 and CanTp 0x650/0x658.");
+    assert(CANIF_NUM_TX_PDUS == 5U && CANIF_NUM_RX_PDUS == 5U);
+    assert(CanIf_TxPduConfig[CANIF_TX_PDU_KEEPALIVE].canId == 0x100U);
+    assert(CanIf_TxPduConfig[CANIF_TX_PDU_SLAVE1_STATUS].canId == 0x201U);
+    assert(CanIf_TxPduConfig[CANIF_TX_PDU_SLAVE2_STATUS].canId == 0x202U);
+    assert(CanIf_TxPduConfig[CANIF_TX_PDU_CANTP_DATA].canId == 0x650U);
+    assert(CanIf_TxPduConfig[CANIF_TX_PDU_CANTP_FC].canId == 0x658U);
+    assert(CanIf_RxPduConfig[CANIF_RX_PDU_KEEPALIVE].canId == 0x100U);
+    assert(CanIf_RxPduConfig[CANIF_RX_PDU_SLAVE1_STATUS].canId == 0x201U);
+    assert(CanIf_RxPduConfig[CANIF_RX_PDU_SLAVE2_STATUS].canId == 0x202U);
+    assert(CanIf_RxPduConfig[CANIF_RX_PDU_CANTP_DATA].canId == 0x650U);
+    assert(CanIf_RxPduConfig[CANIF_RX_PDU_CANTP_FC].canId == 0x658U);
+    puts("PASS: production CanIf maps all three COM and two CanTp IDs.");
     return 0;
 }

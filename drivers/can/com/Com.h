@@ -48,6 +48,12 @@ uint32_t Com_GetRxIndicationCount(void);
 /* Return U=1 receptions for an Update-Bit Signal, or zero for a raw Signal. */
 uint32_t Com_GetRxSignalUpdateCount(PduIdType SignalId);
 
+/* Return the accepted reception count for one configured Rx I-PDU. */
+uint32_t Com_GetRxIPduIndicationCount(PduIdType ComRxPduId);
+
+/* Enable or disable one periodic Tx I-PDU for the selected ECU role. */
+Std_ReturnType Com_SetTxIPduEnabled(PduIdType ComTxPduId, uint8_t Enabled);
+
 /* Run the non-blocking Tx scheduler once per 1 ms. */
 void Com_MainFunctionTx(void);
 

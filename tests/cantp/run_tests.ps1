@@ -5,7 +5,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $taskRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$taskOutput = Join-Path $taskRoot 'build/cantp_phase2'
+$taskOutput = Join-Path $taskRoot 'build/cantp_phase3'
 New-Item -ItemType Directory -Force -Path $taskOutput | Out-Null
 $taskLog = Join-Path $taskOutput 'verification.log'
 
@@ -16,12 +16,14 @@ $taskPduRConfig = Join-Path $taskRoot 'drivers/can/pdur/PduR_Cfg.c'
 $taskNodeApp = Join-Path $taskRoot 'app/node_app.c'
 $taskPhase1Test = Join-Path $PSScriptRoot 'test_cantp_phase1.c'
 $taskPhase2Test = Join-Path $PSScriptRoot 'test_cantp_phase2.c'
+$taskPhase3Test = Join-Path $PSScriptRoot 'test_cantp_phase3.c'
 $taskRoutingTest = Join-Path $PSScriptRoot 'test_cantp_routing.c'
 $taskPhase1Exe = Join-Path $taskOutput 'test_cantp_phase1.exe'
 $taskPhase2Exe = Join-Path $taskOutput 'test_cantp_phase2.exe'
+$taskPhase3Exe = Join-Path $taskOutput 'test_cantp_phase3.exe'
 $taskRoutingExe = Join-Path $taskOutput 'test_cantp_routing.exe'
 
-'CanTp Phase-2 verification' | Tee-Object -FilePath $taskLog
+'CanTp Phase-3 verification' | Tee-Object -FilePath $taskLog
 & $HostCompiler -std=c99 -Wall -Wextra -Werror -g `
     $taskPhase1Test $taskCanTp $taskCanTpConfig -o $taskPhase1Exe 2>&1 |
     Tee-Object -FilePath $taskLog -Append
@@ -35,6 +37,13 @@ if ($LASTEXITCODE -ne 0) { throw "CanTp Phase-1 tests failed: $LASTEXITCODE" }
 if ($LASTEXITCODE -ne 0) { throw "CanTp Phase-2 test compilation failed: $LASTEXITCODE" }
 & $taskPhase2Exe 2>&1 | Tee-Object -FilePath $taskLog -Append
 if ($LASTEXITCODE -ne 0) { throw "CanTp Phase-2 tests failed: $LASTEXITCODE" }
+
+& $HostCompiler -std=c99 -Wall -Wextra -Werror -g `
+    $taskPhase3Test $taskCanTp $taskCanTpConfig -o $taskPhase3Exe 2>&1 |
+    Tee-Object -FilePath $taskLog -Append
+if ($LASTEXITCODE -ne 0) { throw "CanTp Phase-3 test compilation failed: $LASTEXITCODE" }
+& $taskPhase3Exe 2>&1 | Tee-Object -FilePath $taskLog -Append
+if ($LASTEXITCODE -ne 0) { throw "CanTp Phase-3 tests failed: $LASTEXITCODE" }
 
 & $HostCompiler -std=c99 -Wall -Wextra -Werror -g `
     $taskRoutingTest $taskNodeApp $taskPduR $taskPduRConfig $taskCanTpConfig `
@@ -56,5 +65,5 @@ foreach ($taskSource in @($taskCanTp, $taskCanTpConfig, $taskPduR,
     }
 }
 
-'PASS: CanTp Phase-2 host tests and strict ARM object compilation completed.' |
+'PASS: CanTp Phase-3 host tests and strict ARM object compilation completed.' |
     Tee-Object -FilePath $taskLog -Append

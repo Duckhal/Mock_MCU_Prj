@@ -216,10 +216,10 @@ static void Loopback_ObserveCallbacks(uint32_t txBefore, uint32_t rxBefore)
     g_CanLoopbackTestResult.lastRxPduId = PduR_LastRxPduId;
     g_CanLoopbackTestResult.lastRxLength = PduR_LastRxLength;
     if ((txCount > 1U) || ((txCount == 1U) &&
-        (PduR_LastTxPduId != CANIF_TX_PDU_VEHICLE_STATUS)))
+        (PduR_LastTxPduId != CANIF_TX_PDU_KEEPALIVE)))
     { Loopback_Fail(LOOPBACK_ERROR_TX_CALLBACK); }
     if ((rxCount > 1U) || ((rxCount == 1U) &&
-        ((PduR_LastRxPduId != CANIF_RX_PDU_VEHICLE_STATUS) ||
+        ((PduR_LastRxPduId != CANIF_RX_PDU_KEEPALIVE) ||
          (PduR_LastRxLength != g_CanLoopbackTestResult.dlc))))
     { Loopback_Fail(LOOPBACK_ERROR_RX_CALLBACK); }
     if (rxCount == 1U)
@@ -252,19 +252,19 @@ static uint8_t Loopback_CheckPduRRejections(void)
         {
         case 0U:
             /* Exactly one route was checked by main; this ID cannot match it. */
-            result = PduR_ComTransmit((PduIdType)(COM_IPDU_VEHICLE_STATUS ^ 0xFFFFU), &pdu);
+            result = PduR_ComTransmit((PduIdType)(COM_IPDU_TX_KEEPALIVE ^ 0xFFFFU), &pdu);
             break;
         case 1U:
-            result = PduR_ComTransmit(COM_IPDU_VEHICLE_STATUS, NULL);
+            result = PduR_ComTransmit(COM_IPDU_TX_KEEPALIVE, NULL);
             break;
         case 2U:
             pdu.SduLength = LOOPBACK_DATA_LENGTH + 1U;
-            result = PduR_ComTransmit(COM_IPDU_VEHICLE_STATUS, &pdu);
+            result = PduR_ComTransmit(COM_IPDU_TX_KEEPALIVE, &pdu);
             break;
         default:
             pdu.SduLength = 1U;
             pdu.SduDataPtr = NULL;
-            result = PduR_ComTransmit(COM_IPDU_VEHICLE_STATUS, &pdu);
+            result = PduR_ComTransmit(COM_IPDU_TX_KEEPALIVE, &pdu);
             break;
         }
         g_CanLoopbackTestResult.pdurRejectionResult = result;
@@ -317,7 +317,7 @@ static uint8_t Loopback_RunCase(Loopback_TxPathType path, uint8_t length)
     pdu.SduDataPtr = (length == 0U) ? NULL : Loopback_TxBytes;
     /* A driver-direct request still needs a configured CanIf local handle
      * so the real CanIf_TxConfirmation forwards it to the capture callback. */
-    canPdu.swPduHandle = CANIF_TX_PDU_VEHICLE_STATUS;
+    canPdu.swPduHandle = CANIF_TX_PDU_KEEPALIVE;
     canPdu.id = CanIf_TxPduConfig[0].canId;
     canPdu.length = length;
     canPdu.sdu = pdu.SduDataPtr;
@@ -327,13 +327,13 @@ static uint8_t Loopback_RunCase(Loopback_TxPathType path, uint8_t length)
         /*=========================================================================
          * PduR Test - COM to CanIf Routing and BUSY Propagation
          *==========================================================================*/
-        g_CanLoopbackTestResult.transmitResult = PduR_ComTransmit(COM_IPDU_VEHICLE_STATUS, &pdu);
+        g_CanLoopbackTestResult.transmitResult = PduR_ComTransmit(COM_IPDU_TX_KEEPALIVE, &pdu);
         if (g_CanLoopbackTestResult.transmitResult != E_OK)
         {
             Loopback_Fail(LOOPBACK_ERROR_TRANSMIT);
             return 0U;
         }
-        g_CanLoopbackTestResult.busyResult = PduR_ComTransmit(COM_IPDU_VEHICLE_STATUS, &pdu);
+        g_CanLoopbackTestResult.busyResult = PduR_ComTransmit(COM_IPDU_TX_KEEPALIVE, &pdu);
         if (g_CanLoopbackTestResult.busyResult != E_NOT_OK)
         {
             Loopback_Fail(LOOPBACK_ERROR_BUSY);
@@ -345,13 +345,13 @@ static uint8_t Loopback_RunCase(Loopback_TxPathType path, uint8_t length)
         /*=========================================================================
          * CanIf Test - Local PDU Mapping and BUSY Propagation
          *==========================================================================*/
-        g_CanLoopbackTestResult.transmitResult = CanIf_Transmit(CANIF_TX_PDU_VEHICLE_STATUS, &pdu);
+        g_CanLoopbackTestResult.transmitResult = CanIf_Transmit(CANIF_TX_PDU_KEEPALIVE, &pdu);
         if (g_CanLoopbackTestResult.transmitResult != E_OK)
         {
             Loopback_Fail(LOOPBACK_ERROR_TRANSMIT);
             return 0U;
         }
-        g_CanLoopbackTestResult.busyResult = CanIf_Transmit(CANIF_TX_PDU_VEHICLE_STATUS, &pdu);
+        g_CanLoopbackTestResult.busyResult = CanIf_Transmit(CANIF_TX_PDU_KEEPALIVE, &pdu);
         if (g_CanLoopbackTestResult.busyResult != E_NOT_OK)
         {
             Loopback_Fail(LOOPBACK_ERROR_BUSY);
@@ -456,25 +456,28 @@ static uint8_t Loopback_WaitComFrame(uint32_t txTarget, uint32_t rxTarget)
     return 0U;
 }
 
-/** Prove the LED frame layout, periodic BUSY handling, and latest-value retry. */
+/** Prove the KeepAlive frame layout, periodic BUSY handling and latest retry. */
 static uint8_t Loopback_RunComTest(void)
 {
     uint32_t txBefore = Com_TxConfirmationCount;
     uint32_t rxBefore = Com_RxIndicationCount;
-    uint32_t received;
-    uint32_t command = COM_LED_COMMAND_ENCODE(
-        COM_LED_MODE_BLINK_1000_MS, COM_LED_STATE_ON);
-    uint32_t invalidCommand = 0x10000U;
+    uint32_t receivedAlive;
+    uint32_t receivedRate;
+    uint32_t alive = 0x21U;
+    uint32_t rate = 4U;
+    uint32_t invalidByte = 0x100U;
     uint8_t tick;
 
     g_CanLoopbackTestResult.stage = LOOPBACK_STAGE_COM_TX;
-    if ((Com_SendSignal(COM_SIGNAL_LED_COMMAND, &command) != E_OK) ||
-        (Com_SendSignal(COM_SIGNAL_LED_COMMAND, &invalidCommand) != E_NOT_OK))
+    if ((Com_SetTxIPduEnabled(COM_IPDU_TX_KEEPALIVE, 1U) != E_OK) ||
+        (Com_SendSignal(COM_SIGNAL_TX_ALIVE_COUNTER, &alive) != E_OK) ||
+        (Com_SendSignal(COM_SIGNAL_TX_KEEPALIVE_RATE, &rate) != E_OK) ||
+        (Com_SendSignal(COM_SIGNAL_TX_ALIVE_COUNTER, &invalidByte) != E_NOT_OK))
     { Loopback_Fail(LOOPBACK_ERROR_COM_SIGNAL); return 0U; }
 
     Com_MainFunctionTx(); /* t=1: period 10, offset 1. */
     if ((CAN0->RAMn[33U] != (CanIf_TxPduConfig[0].canId << 18U)) ||
-        (CAN0->RAMn[34U] != 0x00020100U))
+        (CAN0->RAMn[34U] != 0x00000421U))
     { Loopback_Fail(LOOPBACK_ERROR_COM_SCHEDULE); return 0U; }
     for (tick = 0U; tick < 9U; tick++)
     { Com_MainFunctionTx(); } /* t=2..10: no nominal due. */
@@ -485,15 +488,19 @@ static uint8_t Loopback_RunComTest(void)
     g_CanLoopbackTestResult.stage = LOOPBACK_STAGE_COM_RX;
     if (Loopback_WaitComFrame(txBefore + 1U, rxBefore + 1U) == 0U)
     { return 0U; }
-    if ((Com_ReceiveSignal(COM_SIGNAL_RX_LED_COMMAND, &received) != E_OK) ||
-        (received != command) || (PduR_LastRxBytes[0] != 0U) ||
-        (PduR_LastRxBytes[1] != COM_LED_MODE_BLINK_1000_MS) ||
-        (PduR_LastRxBytes[2] != COM_LED_STATE_ON))
+    if ((Com_ReceiveSignal(COM_SIGNAL_RX_ALIVE_COUNTER,
+                           &receivedAlive) != E_OK) ||
+        (Com_ReceiveSignal(COM_SIGNAL_RX_KEEPALIVE_RATE,
+                           &receivedRate) != E_OK) ||
+        (receivedAlive != alive) || (receivedRate != rate) ||
+        (PduR_LastRxBytes[0] != alive) ||
+        (PduR_LastRxBytes[1] != rate))
     { Loopback_Fail(LOOPBACK_ERROR_COM_RECEIVE); return 0U; }
 
-    command = COM_LED_COMMAND_ENCODE(COM_LED_MODE_BLINK_2000_MS,
-                                     COM_LED_STATE_ON);
-    if (Com_SendSignal(COM_SIGNAL_LED_COMMAND, &command) != E_OK)
+    alive = 0x22U;
+    rate = 6U;
+    if ((Com_SendSignal(COM_SIGNAL_TX_ALIVE_COUNTER, &alive) != E_OK) ||
+        (Com_SendSignal(COM_SIGNAL_TX_KEEPALIVE_RATE, &rate) != E_OK))
     { Loopback_Fail(LOOPBACK_ERROR_COM_SIGNAL); return 0U; }
     g_CanLoopbackTestResult.stage = LOOPBACK_STAGE_COM_TX;
     Com_MainFunctionTx(); /* t=12: pending retry uses latest value. */
@@ -502,15 +509,16 @@ static uint8_t Loopback_RunComTest(void)
     g_CanLoopbackTestResult.stage = LOOPBACK_STAGE_COM_RX;
     if (Loopback_WaitComFrame(txBefore + 2U, rxBefore + 2U) == 0U)
     { return 0U; }
-    if ((Com_ReceiveSignal(COM_SIGNAL_RX_LED_COMMAND, &received) != E_OK) ||
-        (received != command) ||
-        (PduR_LastRxBytes[1] != COM_LED_MODE_BLINK_2000_MS) ||
-        (PduR_LastRxBytes[2] != COM_LED_STATE_ON))
+    if ((Com_ReceiveSignal(COM_SIGNAL_RX_ALIVE_COUNTER,
+                           &receivedAlive) != E_OK) ||
+        (Com_ReceiveSignal(COM_SIGNAL_RX_KEEPALIVE_RATE,
+                           &receivedRate) != E_OK) ||
+        (receivedAlive != alive) || (receivedRate != rate) ||
+        (PduR_LastRxBytes[0] != alive) ||
+        (PduR_LastRxBytes[1] != rate))
     { Loopback_Fail(LOOPBACK_ERROR_COM_RECEIVE); return 0U; }
-    g_CanLoopbackTestResult.comReceivedGear =
-        COM_LED_COMMAND_GET_MODE(received);
-    g_CanLoopbackTestResult.comReceivedAlive =
-        COM_LED_COMMAND_GET_STATE(received);
+    g_CanLoopbackTestResult.comReceivedGear = (uint8_t)receivedRate;
+    g_CanLoopbackTestResult.comReceivedAlive = (uint8_t)receivedAlive;
     g_CanLoopbackTestResult.comTxConfirmations = Com_TxConfirmationCount;
     g_CanLoopbackTestResult.comRxIndications = Com_RxIndicationCount;
     g_CanLoopbackTestResult.comDrops = Com_TxDropCount;
@@ -554,10 +562,10 @@ void CanLoopbackTest_Run(void)
     /*=========================================================================
      * CanIf Test - Loopback PDU Configuration
      *==========================================================================*/
-    /* VehicleStatus remains entry zero beside dedicated CanTp Data/FC routes. */
-    if ((CANIF_NUM_TX_PDUS != 3U) || (CANIF_NUM_RX_PDUS != 3U) ||
-        (CanIf_TxPduConfig[0].txPduId != CANIF_TX_PDU_VEHICLE_STATUS) ||
-        (CanIf_RxPduConfig[0].rxPduId != CANIF_RX_PDU_VEHICLE_STATUS) ||
+    /* KeepAlive remains entry zero beside Status and CanTp routes. */
+    if ((CANIF_NUM_TX_PDUS != 5U) || (CANIF_NUM_RX_PDUS != 5U) ||
+        (CanIf_TxPduConfig[0].txPduId != CANIF_TX_PDU_KEEPALIVE) ||
+        (CanIf_RxPduConfig[0].rxPduId != CANIF_RX_PDU_KEEPALIVE) ||
         (CanIf_TxPduConfig[0].canId != CanIf_RxPduConfig[0].canId))
     {
         Loopback_Fail(LOOPBACK_ERROR_CONFIG);
@@ -567,14 +575,14 @@ void CanLoopbackTest_Run(void)
      * PduR Test - Tx Route Configuration
      *==========================================================================*/
     /* Verify both directions and one logical GlobalPduId across the route. */
-    if ((PDUR_NUM_TX_ROUTES != 1U) ||
-        (PDUR_NUM_RX_ROUTES != 1U) ||
-        (PduR_TxRouteConfig[0].sourcePduId != COM_IPDU_VEHICLE_STATUS) ||
-        (PduR_TxRouteConfig[0].destPduId != CANIF_TX_PDU_VEHICLE_STATUS) ||
-        (PduR_TxRouteConfig[0].globalPduId != GLOBAL_PDU_VEHICLE_STATUS) ||
-        (PduR_RxRouteConfig[0].sourcePduId != CANIF_RX_PDU_VEHICLE_STATUS) ||
-        (PduR_RxRouteConfig[0].destPduId != COM_IPDU_RX_VEHICLE_STATUS) ||
-        (PduR_RxRouteConfig[0].globalPduId != GLOBAL_PDU_VEHICLE_STATUS))
+    if ((PDUR_NUM_TX_ROUTES != 3U) ||
+        (PDUR_NUM_RX_ROUTES != 3U) ||
+        (PduR_TxRouteConfig[0].sourcePduId != COM_IPDU_TX_KEEPALIVE) ||
+        (PduR_TxRouteConfig[0].destPduId != CANIF_TX_PDU_KEEPALIVE) ||
+        (PduR_TxRouteConfig[0].globalPduId != GLOBAL_PDU_KEEPALIVE) ||
+        (PduR_RxRouteConfig[0].sourcePduId != CANIF_RX_PDU_KEEPALIVE) ||
+        (PduR_RxRouteConfig[0].destPduId != COM_IPDU_RX_KEEPALIVE) ||
+        (PduR_RxRouteConfig[0].globalPduId != GLOBAL_PDU_KEEPALIVE))
     {
         Loopback_Fail(LOOPBACK_ERROR_CONFIG);
         goto finished;

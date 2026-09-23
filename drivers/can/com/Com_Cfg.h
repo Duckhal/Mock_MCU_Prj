@@ -3,61 +3,45 @@
 
 #include "Com_Types.h"
 
-/* =========================
- * Signal configuration
- * ========================= */
+/* Application signals for the three fixed ECU roles. */
+#define COM_NUM_SIGNALS                    (8U)
+#define COM_SIGNAL_TX_ALIVE_COUNTER        ((PduIdType)0U)
+#define COM_SIGNAL_TX_KEEPALIVE_RATE       ((PduIdType)1U)
+#define COM_SIGNAL_RX_ALIVE_COUNTER        ((PduIdType)2U)
+#define COM_SIGNAL_RX_KEEPALIVE_RATE       ((PduIdType)3U)
+#define COM_SIGNAL_TX_SLAVE1_STATUS        ((PduIdType)4U)
+#define COM_SIGNAL_RX_SLAVE1_STATUS        ((PduIdType)5U)
+#define COM_SIGNAL_TX_SLAVE2_STATUS        ((PduIdType)6U)
+#define COM_SIGNAL_RX_SLAVE2_STATUS        ((PduIdType)7U)
 
-#define COM_NUM_SIGNALS                 (2U)
+#define COM_KEEPALIVE_RATE_LEVEL_MAX       (6U)
+#define COM_SLAVE_STATUS_NORMAL            (0U)
+#define COM_SLAVE_STATUS_MASTER_LOST       (1U)
 
-/* Keep the transmitted LED Signal ID non-zero so enabled Global ID is visible. */
-#define COM_SIGNAL_LED_COMMAND          ((PduIdType)1U)
-#define COM_SIGNAL_RX_LED_COMMAND       ((PduIdType)2U)
+/* One Signal Group owns each direction of each wire I-PDU. */
+#define COM_NUM_SIGNAL_GROUPS              (6U)
+#define COM_SIGNAL_GROUP_TX_KEEPALIVE      ((PduIdType)0U)
+#define COM_SIGNAL_GROUP_RX_KEEPALIVE      ((PduIdType)1U)
+#define COM_SIGNAL_GROUP_TX_SLAVE1_STATUS  ((PduIdType)2U)
+#define COM_SIGNAL_GROUP_RX_SLAVE1_STATUS  ((PduIdType)3U)
+#define COM_SIGNAL_GROUP_TX_SLAVE2_STATUS  ((PduIdType)4U)
+#define COM_SIGNAL_GROUP_RX_SLAVE2_STATUS  ((PduIdType)5U)
 
-/* Byte 0 is zero by default; enable this to encode COM_SIGNAL_LED_COMMAND. */
-#ifndef COM_GLOBAL_ID_ENABLED
-#define COM_GLOBAL_ID_ENABLED           (0U)
-#endif
-#if ((COM_GLOBAL_ID_ENABLED != 0U) && (COM_GLOBAL_ID_ENABLED != 1U))
-#error "COM_GLOBAL_ID_ENABLED must be 0U or 1U"
-#endif
+/* Local COM I-PDU IDs; CAN IDs are bound by CanIf_Cfg.c. */
+#define COM_NUM_IPDUS                      (6U)
+#define COM_IPDU_TX_KEEPALIVE              ((PduIdType)0U)
+#define COM_IPDU_RX_KEEPALIVE              ((PduIdType)1U)
+#define COM_IPDU_TX_SLAVE1_STATUS          ((PduIdType)2U)
+#define COM_IPDU_RX_SLAVE1_STATUS          ((PduIdType)3U)
+#define COM_IPDU_TX_SLAVE2_STATUS          ((PduIdType)4U)
+#define COM_IPDU_RX_SLAVE2_STATUS          ((PduIdType)5U)
 
-#define COM_LED_MODE_STEADY             (0U)
-#define COM_LED_MODE_BLINK_500_MS       (1U)
-#define COM_LED_MODE_BLINK_1000_MS      (2U)
-#define COM_LED_MODE_BLINK_2000_MS      (3U)
-#define COM_LED_MODE_MAX                COM_LED_MODE_BLINK_2000_MS
-#define COM_LED_STATE_OFF               (0U)
-#define COM_LED_STATE_ON                (1U)
-
-/* The logical uint32 Signal value maps to wire bytes [mode][state]. */
-#define COM_LED_COMMAND_ENCODE(mode, state) \
-    ((uint32_t)(mode) | ((uint32_t)(state) << 8U))
-#define COM_LED_COMMAND_GET_MODE(value) ((uint8_t)((value) & 0xFFU))
-#define COM_LED_COMMAND_GET_STATE(value) ((uint8_t)(((value) >> 8U) & 0xFFU))
-
-/* =========================
- * Signal Group configuration
- * ========================= */
-
-#define COM_NUM_SIGNAL_GROUPS           (2U)
-
-#define COM_SIGNAL_GROUP_LED_CONTROL       ((PduIdType)0U)
-#define COM_SIGNAL_GROUP_RX_LED_CONTROL    ((PduIdType)1U)
-
-/* =========================
- * I-PDU configuration
- * ========================= */
-
-#define COM_NUM_IPDUS                   (2U)
-#define COM_IPDU_VEHICLE_STATUS         ((PduIdType)0U)
-#define COM_IPDU_RX_VEHICLE_STATUS      ((PduIdType)1U)
-
-/* =========================
- * Configuration tables
- * ========================= */
+#define COM_KEEPALIVE_TX_PERIOD_TICKS      (10U)
+#define COM_SLAVE_STATUS_TX_PERIOD_TICKS   (500U)
 
 extern const Com_SignalConfigType Com_SignalConfig[COM_NUM_SIGNALS];
-extern const Com_SignalGroupConfigType Com_SignalGroupConfig[COM_NUM_SIGNAL_GROUPS];
+extern const Com_SignalGroupConfigType
+    Com_SignalGroupConfig[COM_NUM_SIGNAL_GROUPS];
 extern const Com_IPduConfigType Com_IPduConfig[COM_NUM_IPDUS];
 
 #endif /* COM_CFG_H_ */

@@ -5,8 +5,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $taskRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$taskEvidence = Join-Path $taskRoot 'evidence/cantp_phase2/raw'
-$taskBuild = Join-Path $taskRoot 'build/cantp_phase2'
+$taskEvidence = Join-Path $taskRoot 'evidence/cantp_phase3/raw'
+$taskBuild = Join-Path $taskRoot 'build/cantp_phase3'
 New-Item -ItemType Directory -Force -Path $taskEvidence | Out-Null
 
 $taskRunner = Join-Path $PSScriptRoot 'run_tests.ps1'
@@ -23,6 +23,13 @@ $taskProtocol | Set-Content -Encoding UTF8 `
     (Join-Path $taskEvidence 'protocol_trace.log')
 if ($LASTEXITCODE -ne 0) {
     throw "CanTp protocol evidence run failed: $LASTEXITCODE"
+}
+
+$taskPhase3 = & (Join-Path $taskBuild 'test_cantp_phase3.exe') 2>&1
+$taskPhase3 | Set-Content -Encoding UTF8 `
+    (Join-Path $taskEvidence 'phase3_trace.log')
+if ($LASTEXITCODE -ne 0) {
+    throw "CanTp Phase-3 evidence run failed: $LASTEXITCODE"
 }
 
 $taskRouting = & (Join-Path $taskBuild 'test_cantp_routing.exe') 2>&1
@@ -52,10 +59,15 @@ $taskMetadata = @(
 )
 $taskHashFiles = @(
     'drivers/can/cantp/Cantp.c',
+    'drivers/can/cantp/Cantp.h',
     'drivers/can/cantp/Cantp_Cfg.c',
+    'drivers/can/cantp/Cantp_Types.h',
     'tests/cantp/test_cantp_phase1.c',
     'tests/cantp/test_cantp_phase2.c',
-    'tests/cantp/test_cantp_routing.c'
+    'tests/cantp/test_cantp_phase3.c',
+    'tests/cantp/test_cantp_routing.c',
+    'tests/cantp/run_tests.ps1',
+    'tests/cantp/generate_evidence.ps1'
 )
 foreach ($taskRelative in $taskHashFiles) {
     $taskHash = Get-FileHash -Algorithm SHA256 (Join-Path $taskRoot $taskRelative)
@@ -64,4 +76,4 @@ foreach ($taskRelative in $taskHashFiles) {
 $taskMetadata | Set-Content -Encoding UTF8 `
     (Join-Path $taskEvidence 'environment.txt')
 
-'PASS: generated CanTp T01-T08/T13 evidence artifacts.'
+'PASS: generated CanTp T01-T14 evidence artifacts through Phase 3.'

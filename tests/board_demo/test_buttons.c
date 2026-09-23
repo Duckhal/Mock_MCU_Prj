@@ -1,33 +1,38 @@
 #include <assert.h>
 #include <stdio.h>
 
-#define APP_BOARD_ROLE (1U)
+#define APP_BOARD_ROLE (2U)
 #include "app_host_fixture.h"
 
-/** Verify the Tx firmware role remains fixed and updates COM every 10 ms. */
+/** Verify Slave 2 has a fixed status route and does not join CanTp image Rx. */
 int main(void)
 {
-    (void)Test_InjectUart;
-    Test_AdcValue = 1500U;
-    Test_RunApp(161U);
+    static const uint8_t data[] = {0x11U, 0x22U, 0x33U};
 
-    assert(g_SystemStatus == SYSTEM_RUNNING && g_AppModeTx == APP_ROLE_TX);
-    assert(g_SystemProcessedTicks == 160U);
-    assert(g_AppMainFunctionCount == 160U);
-    assert(Test_PduRInitCount == 1U);
-    assert(Test_CanTpLoopbackCount == 0U);
-    assert(Test_CanTpLoopbackEnableCount == 0U);
-    assert(Test_WriteCount == 160U && Test_ReadCount == 160U);
-    assert(Test_SendCount == 16U && g_AppTxSignalUpdates == 16U);
-    assert(Test_SentCommands[0] ==
-           COM_LED_COMMAND_ENCODE(COM_LED_MODE_BLINK_500_MS,
-                                  COM_LED_STATE_ON));
-    assert(Test_SentCommands[15] == Test_SentCommands[0]);
-    assert(Test_SchedulerCount == 160U);
-    assert(Test_ReceiveCount == 0U && g_AppRxCommands == 0U);
-    assert(Test_LedState[0] == 0U && Test_LedState[1] == 1U &&
-           Test_LedState[2] == 0U);
-    assert(Test_UartStringCount == 0U && Test_UartRawTxLength == 0U);
-    puts("PASS: compile-time Tx role stays fixed and updates COM every 10 ms.");
+    (void)Test_RunApp;
+    (void)Test_InjectSlaveStatus;
+    (void)Test_ConfirmNodeTx;
+    assert(App_HardwareInit() == E_OK);
+    assert(App_Init() == E_OK);
+    assert(g_AppRole == APP_ROLE_SLAVE2);
+    assert(Test_AdcStartCount == 0U);
+    assert(Test_ComTxEnabled[COM_IPDU_TX_SLAVE2_STATUS] == 1U);
+    assert(Test_ComTxEnabled[COM_IPDU_TX_KEEPALIVE] == 0U);
+    assert(Test_ComTxEnabled[COM_IPDU_TX_SLAVE1_STATUS] == 0U);
+    assert(Test_CanTpDataRxEnabled == 0U);
+    assert(Test_ComSignalValue[COM_SIGNAL_TX_SLAVE2_STATUS] ==
+           COM_SLAVE_STATUS_NORMAL);
+
+    Test_InjectKeepAlive(9U, 3U);
+    assert(App_MainFunction(10U) == E_OK);
+    assert(Test_LedState[0] == 1U);
+
+    Test_QueueNodeRx(data, sizeof(data));
+    assert(App_MainFunction(11U) == E_OK);
+    assert(g_AppCanTpRxIgnored == 1U);
+    assert(g_AppCanTpRxUartDeliveries == 0U);
+    assert(Test_UartRawTxLength == 0U);
+
+    puts("PASS: SLAVE2 build fixes its status route and disables image reception.");
     return 0;
 }

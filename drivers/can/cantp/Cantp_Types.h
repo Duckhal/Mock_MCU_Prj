@@ -52,7 +52,8 @@ typedef enum
     CANTP_ABORT_N_CR_TIMEOUT,
     CANTP_ABORT_INVALID_FLOW_CONTROL,
     CANTP_ABORT_SEQUENCE_NUMBER,
-    CANTP_ABORT_COPY_FAILURE
+    CANTP_ABORT_COPY_FAILURE,
+    CANTP_ABORT_RX_REPLACED
 } CanTp_AbortReasonType;
 
 /*
@@ -98,7 +99,7 @@ typedef struct
     CanTp_FrameType preparedFrameType;
 } CanTp_TxRuntimeType;
 
-/* Runtime data for one Phase-2 receive session and its FC resource. */
+/* Runtime data for one receive session and its independent FC resource. */
 typedef struct
 {
     CanTp_RxStateType state;
@@ -120,7 +121,7 @@ typedef struct
     uint32_t nCrStartMs;
 } CanTp_RxRuntimeType;
 
-/* Structured Phase-2 events retained for debugger inspection. */
+/* Structured transport events retained for debugger inspection. */
 typedef enum
 {
     CANTP_LOG_INIT_OK = 0,

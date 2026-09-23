@@ -14,9 +14,12 @@ extern volatile uint32_t CanTp_RxAbortCount;
 
 /*
  * @brief Initialize the mock CanTp module.
- * @return E_OK when the fixed Phase-2 configuration is valid; otherwise E_NOT_OK.
+ * @return E_OK when the fixed configuration is valid; otherwise E_NOT_OK.
  */
 Std_ReturnType CanTp_Init(void);
+
+/* Enable or disable reception of Data N-PDUs while no Rx session is active. */
+Std_ReturnType CanTp_SetDataRxEnabled(uint8_t Enabled);
 
 /*
  * @brief Accept one upper-layer N-SDU transmission request.

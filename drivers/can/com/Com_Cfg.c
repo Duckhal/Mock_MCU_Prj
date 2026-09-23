@@ -1,67 +1,78 @@
 #include "Com_Cfg.h"
 #include "../common/CanStack_Cfg.h"
 
-static const PduIdType LedControlRxSignalList[] =
+static const PduIdType KeepAliveTxSignals[] =
 {
-    COM_SIGNAL_RX_LED_COMMAND
+    COM_SIGNAL_TX_ALIVE_COUNTER,
+    COM_SIGNAL_TX_KEEPALIVE_RATE
+};
+static const PduIdType KeepAliveRxSignals[] =
+{
+    COM_SIGNAL_RX_ALIVE_COUNTER,
+    COM_SIGNAL_RX_KEEPALIVE_RATE
+};
+static const PduIdType Slave1StatusTxSignals[] =
+{
+    COM_SIGNAL_TX_SLAVE1_STATUS
+};
+static const PduIdType Slave1StatusRxSignals[] =
+{
+    COM_SIGNAL_RX_SLAVE1_STATUS
+};
+static const PduIdType Slave2StatusTxSignals[] =
+{
+    COM_SIGNAL_TX_SLAVE2_STATUS
+};
+static const PduIdType Slave2StatusRxSignals[] =
+{
+    COM_SIGNAL_RX_SLAVE2_STATUS
 };
 
-static const PduIdType LedControlSignalList[] =
+const Com_SignalConfigType Com_SignalConfig[COM_NUM_SIGNALS] =
 {
-    COM_SIGNAL_LED_COMMAND
-};
-
-const Com_SignalConfigType
-Com_SignalConfig[COM_NUM_SIGNALS] =
-{
-    {
-        .signalId = COM_SIGNAL_LED_COMMAND,
-        .signalGroupId = COM_SIGNAL_GROUP_LED_CONTROL,
-        .slotStartBit = 8U,
-        .slotLength = 16U,
-        .useUpdateBit = 0U
-    },
-    {
-        .signalId = COM_SIGNAL_RX_LED_COMMAND,
-        .signalGroupId = COM_SIGNAL_GROUP_RX_LED_CONTROL,
-        .slotStartBit = 8U,
-        .slotLength = 16U,
-        .useUpdateBit = 0U
-    }
+    { COM_SIGNAL_TX_ALIVE_COUNTER, COM_SIGNAL_GROUP_TX_KEEPALIVE,
+      0U, 8U, 0U },
+    { COM_SIGNAL_TX_KEEPALIVE_RATE, COM_SIGNAL_GROUP_TX_KEEPALIVE,
+      8U, 8U, 0U },
+    { COM_SIGNAL_RX_ALIVE_COUNTER, COM_SIGNAL_GROUP_RX_KEEPALIVE,
+      0U, 8U, 0U },
+    { COM_SIGNAL_RX_KEEPALIVE_RATE, COM_SIGNAL_GROUP_RX_KEEPALIVE,
+      8U, 8U, 0U },
+    { COM_SIGNAL_TX_SLAVE1_STATUS, COM_SIGNAL_GROUP_TX_SLAVE1_STATUS,
+      0U, 8U, 0U },
+    { COM_SIGNAL_RX_SLAVE1_STATUS, COM_SIGNAL_GROUP_RX_SLAVE1_STATUS,
+      0U, 8U, 0U },
+    { COM_SIGNAL_TX_SLAVE2_STATUS, COM_SIGNAL_GROUP_TX_SLAVE2_STATUS,
+      0U, 8U, 0U },
+    { COM_SIGNAL_RX_SLAVE2_STATUS, COM_SIGNAL_GROUP_RX_SLAVE2_STATUS,
+      0U, 8U, 0U }
 };
 
 const Com_SignalGroupConfigType
 Com_SignalGroupConfig[COM_NUM_SIGNAL_GROUPS] =
 {
-    {
-        .signalGroupId = COM_SIGNAL_GROUP_LED_CONTROL,
-        .signalList = LedControlSignalList,
-        .numSignals = 1U
-    },
-    {
-        .signalGroupId = COM_SIGNAL_GROUP_RX_LED_CONTROL,
-        .signalList = LedControlRxSignalList,
-        .numSignals = 1U
-    }
+    { COM_SIGNAL_GROUP_TX_KEEPALIVE, KeepAliveTxSignals, 2U },
+    { COM_SIGNAL_GROUP_RX_KEEPALIVE, KeepAliveRxSignals, 2U },
+    { COM_SIGNAL_GROUP_TX_SLAVE1_STATUS, Slave1StatusTxSignals, 1U },
+    { COM_SIGNAL_GROUP_RX_SLAVE1_STATUS, Slave1StatusRxSignals, 1U },
+    { COM_SIGNAL_GROUP_TX_SLAVE2_STATUS, Slave2StatusTxSignals, 1U },
+    { COM_SIGNAL_GROUP_RX_SLAVE2_STATUS, Slave2StatusRxSignals, 1U }
 };
 
-const Com_IPduConfigType
-Com_IPduConfig[COM_NUM_IPDUS] =
+const Com_IPduConfigType Com_IPduConfig[COM_NUM_IPDUS] =
 {
-    {
-        .ipduId = COM_IPDU_VEHICLE_STATUS,
-        .globalPduId = GLOBAL_PDU_VEHICLE_STATUS,
-
-        .direction = COM_IPDU_TX,
-        .length = 8U,
-
-        .signalGroupId = COM_SIGNAL_GROUP_LED_CONTROL,
-
-        .periodTicks = 10U,
-        .initialOffsetTicks = 1U,
-
-        .maxRetries = 3U
-    },
-    { COM_IPDU_RX_VEHICLE_STATUS, GLOBAL_PDU_VEHICLE_STATUS,
-      COM_IPDU_RX, 8U, COM_SIGNAL_GROUP_RX_LED_CONTROL, 0U, 0U, 0U }
+    { COM_IPDU_TX_KEEPALIVE, GLOBAL_PDU_KEEPALIVE, COM_IPDU_TX, 8U,
+      COM_SIGNAL_GROUP_TX_KEEPALIVE, COM_KEEPALIVE_TX_PERIOD_TICKS, 1U, 3U },
+    { COM_IPDU_RX_KEEPALIVE, GLOBAL_PDU_KEEPALIVE, COM_IPDU_RX, 8U,
+      COM_SIGNAL_GROUP_RX_KEEPALIVE, 0U, 0U, 0U },
+    { COM_IPDU_TX_SLAVE1_STATUS, GLOBAL_PDU_SLAVE1_STATUS, COM_IPDU_TX, 8U,
+      COM_SIGNAL_GROUP_TX_SLAVE1_STATUS,
+      COM_SLAVE_STATUS_TX_PERIOD_TICKS, 1U, 3U },
+    { COM_IPDU_RX_SLAVE1_STATUS, GLOBAL_PDU_SLAVE1_STATUS, COM_IPDU_RX, 8U,
+      COM_SIGNAL_GROUP_RX_SLAVE1_STATUS, 0U, 0U, 0U },
+    { COM_IPDU_TX_SLAVE2_STATUS, GLOBAL_PDU_SLAVE2_STATUS, COM_IPDU_TX, 8U,
+      COM_SIGNAL_GROUP_TX_SLAVE2_STATUS,
+      COM_SLAVE_STATUS_TX_PERIOD_TICKS, 1U, 3U },
+    { COM_IPDU_RX_SLAVE2_STATUS, GLOBAL_PDU_SLAVE2_STATUS, COM_IPDU_RX, 8U,
+      COM_SIGNAL_GROUP_RX_SLAVE2_STATUS, 0U, 0U, 0U }
 };

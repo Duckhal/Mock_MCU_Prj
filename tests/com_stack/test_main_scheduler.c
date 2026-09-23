@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define APP_BOARD_ROLE (1U)
+#define APP_BOARD_ROLE (0U)
 #include "../board_demo/app_host_fixture.h"
 
 /** Verify catch-up preserves CAN Write, CAN Read, CanTp and COM call order. */
@@ -10,7 +10,7 @@ int main(void)
 {
     Test_JumpAt = 61U; /* The next poll observes tick 63 instead. */
     Test_RunApp(71U);
-    assert(g_SystemStatus == SYSTEM_RUNNING && g_AppModeTx == APP_ROLE_TX);
+    assert(g_SystemStatus == SYSTEM_RUNNING && g_AppRole == APP_ROLE_MASTER);
     assert(g_SystemProcessedTicks == 70U);
     assert(g_AppMainFunctionCount == 70U);
     assert(Test_PduRInitCount == 1U);

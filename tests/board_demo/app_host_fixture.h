@@ -12,18 +12,19 @@
 #include "../../app/app.c"
 #include "../../middlewares/ring_buffer.c"
 
+#define TEST_NODE_TX_HISTORY_SIZE (32U)
+#define TEST_UART_CAPTURE_SIZE    (8192U)
+#if defined(__GNUC__)
+#define TEST_UNUSED __attribute__((unused))
+#else
+#define TEST_UNUSED
+#endif
+
 static jmp_buf Test_StopPoint;
 static uint32_t Test_Tick;
 static uint32_t Test_StopAt;
-static uint32_t Test_RxAt;
-static uint32_t Test_RxValue;
 static uint32_t Test_JumpAt;
-static uint8_t Test_RxInjected;
-static uint8_t Test_RxValid;
 static uint8_t Test_LedState[3];
-static uint32_t Test_SentCommands[32];
-static uint32_t Test_SendCount;
-static uint32_t Test_ReceiveCount;
 static uint32_t Test_SchedulerCount;
 static uint32_t Test_WriteCount;
 static uint32_t Test_ReadCount;
@@ -31,57 +32,93 @@ static uint32_t Test_CanTpCount;
 static uint32_t Test_CanTpLoopbackCount;
 static uint32_t Test_CanTpLoopbackEnableCount;
 static uint32_t Test_PduRInitCount;
-static uint32_t Test_NodeReadyCount;
-static uint32_t Test_NodeTransmitCount;
-static PduLengthType Test_NodeRxLength;
-static uint8_t Test_NodeRxData[NODE_APP_MAX_NSDU_LENGTH];
-static PduLengthType Test_NodeTxLength;
-static uint8_t Test_NodeTxData[NODE_APP_MAX_NSDU_LENGTH];
 static char Test_JumpEvents[16];
 static uint8_t Test_JumpEventCount;
-static char Test_LastUart[64];
-static uint32_t Test_UartStringCount;
 static UART_RxCallback_t Test_UartRxCallback;
-static uint8_t Test_UartRawTx[256];
+static UART_TxCallback_t Test_UartTxCallback;
+static uint8_t Test_UartRawTx[TEST_UART_CAPTURE_SIZE];
 static uint16_t Test_UartRawTxLength;
 static uint16_t Test_AdcValue;
 static uint32_t Test_AdcStartCount;
+static uint32_t Test_ComSignalValue[COM_NUM_SIGNALS];
+static uint8_t Test_ComSignalValid[COM_NUM_SIGNALS];
+static uint32_t Test_ComSendCount[COM_NUM_SIGNALS];
+static uint32_t Test_ComRxCount[COM_NUM_IPDUS];
+static uint8_t Test_ComTxEnabled[COM_NUM_IPDUS];
+static uint8_t Test_CanTpDataRxEnabled;
+static uint32_t Test_NodeReadyCount;
+static PduLengthType Test_NodeRxLength;
+static uint8_t Test_NodeRxData[NODE_APP_MAX_NSDU_LENGTH];
+static uint32_t Test_NodeTransmitCount;
+static uint8_t Test_NodeTransmitAccept;
+static PduLengthType Test_NodeTxLength[TEST_NODE_TX_HISTORY_SIZE];
+static uint8_t Test_NodeTxData[TEST_NODE_TX_HISTORY_SIZE]
+                                  [NODE_APP_MAX_NSDU_LENGTH];
 
 volatile uint32_t Com_RxIndicationCount;
 volatile uint32_t NodeApp_TxConfirmationCount;
 volatile Std_ReturnType NodeApp_LastTxResult;
 
 uint32_t Com_GetRxIndicationCount(void)
-{ return Com_RxIndicationCount; }
+{
+    return Com_RxIndicationCount;
+}
 
-/** Record poll ordering during the one simulated three-tick backlog. */
-static void Test_RecordEvent(char event)
+static void Test_RecordEvent(char Event)
 {
     if ((Test_JumpAt != 0U) && (Test_Tick == Test_JumpAt + 2U))
     {
         assert(Test_JumpEventCount < sizeof(Test_JumpEvents));
-        Test_JumpEvents[Test_JumpEventCount++] = event;
+        Test_JumpEvents[Test_JumpEventCount++] = Event;
     }
 }
 
-static unsigned Test_LedIndex(ARM_GPIO_Pin_t pin)
+static unsigned Test_LedIndex(ARM_GPIO_Pin_t Pin)
 {
-    if (pin == LED_BLUE) { return 0U; }
-    if (pin == LED_RED) { return 1U; }
-    assert(pin == LED_GREEN);
+    if (Pin == LED_BLUE) { return 0U; }
+    if (Pin == LED_RED) { return 1U; }
+    assert(Pin == LED_GREEN);
     return 2U;
 }
 
-void LED_Init(ARM_GPIO_Pin_t pin) { Test_LedState[Test_LedIndex(pin)] = 0U; }
-void LED_On(ARM_GPIO_Pin_t pin) { Test_LedState[Test_LedIndex(pin)] = 1U; }
-void LED_Off(ARM_GPIO_Pin_t pin) { Test_LedState[Test_LedIndex(pin)] = 0U; }
+void LED_Init(ARM_GPIO_Pin_t Pin)
+{
+    Test_LedState[Test_LedIndex(Pin)] = 0U;
+}
 
-uint32_t ADC_Init(uint8_t mode)
-{ assert(mode == ADC_MODE_SW_TRIGGER); return ADC_STATUS_OK; }
-uint32_t ADC_SetChannel(uint8_t channel)
-{ assert(channel == ADC_CHANNEL_12); return ADC_STATUS_OK; }
+void LED_On(ARM_GPIO_Pin_t Pin)
+{
+    Test_LedState[Test_LedIndex(Pin)] = 1U;
+}
+
+void LED_Off(ARM_GPIO_Pin_t Pin)
+{
+    Test_LedState[Test_LedIndex(Pin)] = 0U;
+}
+
+void LED_Write(ARM_GPIO_Pin_t Pin, led_state_t State)
+{
+    Test_LedState[Test_LedIndex(Pin)] = (uint8_t)(State == LED_STATE_ON);
+}
+
+uint32_t ADC_Init(uint8_t Mode)
+{
+    assert(Mode == ADC_MODE_SW_TRIGGER);
+    return ADC_STATUS_OK;
+}
+
+uint32_t ADC_SetChannel(uint8_t Channel)
+{
+    assert(Channel == ADC_CHANNEL_12);
+    return ADC_STATUS_OK;
+}
+
 uint32_t ADC_StartConversion(void)
-{ Test_AdcStartCount++; return ADC_STATUS_OK; }
+{
+    Test_AdcStartCount++;
+    return ADC_STATUS_OK;
+}
+
 uint32_t ADC_IsConversionComplete(void) { return 1U; }
 uint16_t ADC_GetResult(void) { return Test_AdcValue; }
 
@@ -90,146 +127,271 @@ void init_MCU(void) {}
 void SystemCoreClockUpdate(void) {}
 Can_ReturnType Can_Init(void) { return CAN_OK; }
 Std_ReturnType CanIf_Init(void) { return E_OK; }
-Std_ReturnType NodeApp_Init(void) { return E_OK; }
 Std_ReturnType CanTp_Init(void) { return E_OK; }
-Std_ReturnType PduR_Init(void)
-{ Test_PduRInitCount++; return E_OK; }
-Std_ReturnType CanTpLoopbackTest_Run(void)
-{ Test_CanTpLoopbackCount++; return E_OK; }
-Std_ReturnType CanTpLoopbackTest_SetEnabled(uint8_t enable)
+
+Std_ReturnType NodeApp_Init(void)
 {
-    assert(enable <= 1U);
+    Test_NodeReadyCount = 0U;
+    Test_NodeTransmitCount = 0U;
+    Test_NodeTransmitAccept = 1U;
+    NodeApp_TxConfirmationCount = 0U;
+    NodeApp_LastTxResult = E_NOT_OK;
+    return E_OK;
+}
+
+Std_ReturnType PduR_Init(void)
+{
+    Test_PduRInitCount++;
+    return E_OK;
+}
+
+Std_ReturnType CanTpLoopbackTest_Run(void)
+{
+    Test_CanTpLoopbackCount++;
+    return E_OK;
+}
+
+Std_ReturnType CanTpLoopbackTest_SetEnabled(uint8_t Enable)
+{
+    assert(Enable <= 1U);
     Test_CanTpLoopbackEnableCount++;
     return E_OK;
 }
+
 Std_ReturnType Com_Init(void)
 {
+    memset(Test_ComSignalValue, 0, sizeof(Test_ComSignalValue));
+    memset(Test_ComSignalValid, 0, sizeof(Test_ComSignalValid));
+    memset(Test_ComSendCount, 0, sizeof(Test_ComSendCount));
+    memset(Test_ComRxCount, 0, sizeof(Test_ComRxCount));
+    memset(Test_ComTxEnabled, 0, sizeof(Test_ComTxEnabled));
     Com_RxIndicationCount = 0U;
     return E_OK;
 }
 
-uint8_t NodeApp_GetReadyCount(void)
-{ return (uint8_t)Test_NodeReadyCount; }
-
-Std_ReturnType NodeApp_Receive(uint8_t *data, PduLengthType capacity,
-                               PduLengthType *length)
+Std_ReturnType Com_SetTxIPduEnabled(PduIdType IPduId, uint8_t Enabled)
 {
-    if ((data == NULL) || (length == NULL) || (Test_NodeReadyCount == 0U) ||
-        (capacity < Test_NodeRxLength))
+    if ((IPduId >= COM_NUM_IPDUS) || (Enabled > 1U))
     {
         return E_NOT_OK;
     }
-    memcpy(data, Test_NodeRxData, Test_NodeRxLength);
-    *length = Test_NodeRxLength;
+    Test_ComTxEnabled[IPduId] = Enabled;
+    return E_OK;
+}
+
+uint32_t Com_GetRxIPduIndicationCount(PduIdType IPduId)
+{
+    return (IPduId < COM_NUM_IPDUS) ? Test_ComRxCount[IPduId] : 0U;
+}
+
+Std_ReturnType Com_SendSignal(PduIdType SignalId, const void *ValuePtr)
+{
+    if ((SignalId >= COM_NUM_SIGNALS) || (ValuePtr == NULL))
+    {
+        return E_NOT_OK;
+    }
+    memcpy(&Test_ComSignalValue[SignalId], ValuePtr, sizeof(uint32_t));
+    Test_ComSignalValid[SignalId] = 1U;
+    Test_ComSendCount[SignalId]++;
+    return E_OK;
+}
+
+Std_ReturnType Com_ReceiveSignal(PduIdType SignalId, void *ValuePtr)
+{
+    if ((SignalId >= COM_NUM_SIGNALS) || (ValuePtr == NULL) ||
+        (Test_ComSignalValid[SignalId] == 0U))
+    {
+        return E_NOT_OK;
+    }
+    memcpy(ValuePtr, &Test_ComSignalValue[SignalId], sizeof(uint32_t));
+    return E_OK;
+}
+
+static TEST_UNUSED void Test_InjectKeepAlive(uint8_t Alive, uint8_t Level)
+{
+    Test_ComSignalValue[COM_SIGNAL_RX_ALIVE_COUNTER] = Alive;
+    Test_ComSignalValue[COM_SIGNAL_RX_KEEPALIVE_RATE] = Level;
+    Test_ComSignalValid[COM_SIGNAL_RX_ALIVE_COUNTER] = 1U;
+    Test_ComSignalValid[COM_SIGNAL_RX_KEEPALIVE_RATE] = 1U;
+    Test_ComRxCount[COM_IPDU_RX_KEEPALIVE]++;
+    Com_RxIndicationCount++;
+}
+
+static TEST_UNUSED void Test_InjectSlaveStatus(uint8_t SlaveIndex,
+                                                uint8_t Status)
+{
+    PduIdType signalId = (SlaveIndex == 0U) ?
+        COM_SIGNAL_RX_SLAVE1_STATUS : COM_SIGNAL_RX_SLAVE2_STATUS;
+    PduIdType ipduId = (SlaveIndex == 0U) ?
+        COM_IPDU_RX_SLAVE1_STATUS : COM_IPDU_RX_SLAVE2_STATUS;
+    assert(SlaveIndex < 2U);
+    Test_ComSignalValue[signalId] = Status;
+    Test_ComSignalValid[signalId] = 1U;
+    Test_ComRxCount[ipduId]++;
+    Com_RxIndicationCount++;
+}
+
+Std_ReturnType CanTp_SetDataRxEnabled(uint8_t Enabled)
+{
+    if (Enabled > 1U)
+    {
+        return E_NOT_OK;
+    }
+    Test_CanTpDataRxEnabled = Enabled;
+    return E_OK;
+}
+
+uint8_t NodeApp_GetReadyCount(void)
+{
+    return (uint8_t)Test_NodeReadyCount;
+}
+
+Std_ReturnType NodeApp_Receive(uint8_t *DataPtr, PduLengthType Capacity,
+                               PduLengthType *LengthPtr)
+{
+    if ((DataPtr == NULL) || (LengthPtr == NULL) ||
+        (Test_NodeReadyCount == 0U) || (Capacity < Test_NodeRxLength))
+    {
+        return E_NOT_OK;
+    }
+    memcpy(DataPtr, Test_NodeRxData, Test_NodeRxLength);
+    *LengthPtr = Test_NodeRxLength;
     Test_NodeReadyCount--;
     return E_OK;
 }
 
-Std_ReturnType NodeApp_Transmit(const uint8_t *data, PduLengthType length)
+Std_ReturnType NodeApp_Transmit(const uint8_t *DataPtr, PduLengthType Length)
 {
-    if ((data == NULL) || (length == 0U) ||
-        (length > NODE_APP_MAX_NSDU_LENGTH))
+    uint32_t index = Test_NodeTransmitCount;
+    if ((DataPtr == NULL) || (Length == 0U) ||
+        (Length > NODE_APP_MAX_NSDU_LENGTH) ||
+        (index >= TEST_NODE_TX_HISTORY_SIZE) ||
+        (Test_NodeTransmitAccept == 0U))
     {
         return E_NOT_OK;
     }
-    memcpy(Test_NodeTxData, data, length);
-    Test_NodeTxLength = length;
+    memcpy(Test_NodeTxData[index], DataPtr, Length);
+    Test_NodeTxLength[index] = Length;
     Test_NodeTransmitCount++;
     return E_OK;
 }
 
-Std_ReturnType Com_SendSignal(PduIdType signalId, const void *value)
+static TEST_UNUSED void Test_ConfirmNodeTx(Std_ReturnType Result)
 {
-    assert(signalId == COM_SIGNAL_LED_COMMAND && value != NULL);
-    assert(Test_SendCount < 32U);
-    memcpy(&Test_SentCommands[Test_SendCount], value, sizeof(uint32_t));
-    Test_SendCount++;
-    return E_OK;
+    NodeApp_LastTxResult = Result;
+    NodeApp_TxConfirmationCount++;
 }
 
-Std_ReturnType Com_ReceiveSignal(PduIdType signalId, void *value)
+static TEST_UNUSED void Test_QueueNodeRx(const uint8_t *DataPtr,
+                                         PduLengthType Length)
 {
-    assert(signalId == COM_SIGNAL_RX_LED_COMMAND && value != NULL);
-    if (Test_RxValid == 0U) { return E_NOT_OK; }
-    memcpy(value, &Test_RxValue, sizeof(uint32_t));
-    Test_ReceiveCount++;
-    return E_OK;
+    assert(DataPtr != NULL && Length > 0U &&
+           Length <= NODE_APP_MAX_NSDU_LENGTH);
+    memcpy(Test_NodeRxData, DataPtr, Length);
+    Test_NodeRxLength = Length;
+    Test_NodeReadyCount = 1U;
 }
 
 void Com_MainFunctionTx(void)
-{ Test_RecordEvent('C'); Test_SchedulerCount++; }
+{
+    Test_RecordEvent('C');
+    Test_SchedulerCount++;
+}
 
 void CanTp_MainFunction(void)
-{ Test_RecordEvent('T'); Test_CanTpCount++; }
+{
+    Test_RecordEvent('T');
+    Test_CanTpCount++;
+}
 
 void Can_MainFunction_Write(void)
-{ Test_RecordEvent('W'); Test_WriteCount++; }
+{
+    Test_RecordEvent('W');
+    Test_WriteCount++;
+}
 
 void Can_MainFunction_Read(void)
 {
     Test_RecordEvent('R');
     Test_ReadCount++;
-    if ((Test_RxAt != 0U) && (Test_Tick == Test_RxAt) &&
-        (Test_RxInjected == 0U))
+}
+
+UART_Status_t LPUART1_Init(uint32_t Baud)
+{
+    assert(Baud == 115200U);
+    return UART_STATUS_OK;
+}
+
+void LPUART1_RegisterCallbacks(UART_RxCallback_t RxCallback,
+                               UART_TxCallback_t TxCallback)
+{
+    Test_UartRxCallback = RxCallback;
+    Test_UartTxCallback = TxCallback;
+}
+
+void LPUART1_EnableTxInterrupt(void)
+{
+    uint8_t value;
+    assert(Test_UartTxCallback != NULL);
+    while (Test_UartTxCallback(&value))
     {
-        Test_RxInjected = 1U;
-        Test_RxValid = 1U;
-        Com_RxIndicationCount++;
+        assert(Test_UartRawTxLength < sizeof(Test_UartRawTx));
+        Test_UartRawTx[Test_UartRawTxLength++] = value;
     }
 }
 
-UART_Status_t LPUART1_Init(uint32_t baud)
-{ assert(baud == 115200U); return UART_STATUS_OK; }
-
-void LPUART1_RegisterCallbacks(UART_RxCallback_t rxCb,
-                               UART_TxCallback_t txCb)
-{
-    assert(txCb == NULL);
-    Test_UartRxCallback = rxCb;
-}
-
-UART_Status_t LPUART1_SendChar_Blocking(char value)
+UART_Status_t LPUART1_SendChar_Blocking(char Value)
 {
     assert(Test_UartRawTxLength < sizeof(Test_UartRawTx));
-    Test_UartRawTx[Test_UartRawTxLength++] = (uint8_t)value;
+    Test_UartRawTx[Test_UartRawTxLength++] = (uint8_t)Value;
     return UART_STATUS_OK;
 }
 
-UART_Status_t LPUART1_SendString_Blocking(const char *line)
+UART_Status_t LPUART1_SendString_Blocking(const char *Text)
 {
-    size_t length = strlen(line);
-    assert(length < sizeof(Test_LastUart));
-    memcpy(Test_LastUart, line, length + 1U);
-    Test_UartStringCount++;
+    size_t length = strlen(Text);
+    assert((size_t)Test_UartRawTxLength + length <= sizeof(Test_UartRawTx));
+    memcpy(&Test_UartRawTx[Test_UartRawTxLength], Text, length);
+    Test_UartRawTxLength = (uint16_t)(Test_UartRawTxLength + length);
     return UART_STATUS_OK;
 }
 
-/** Inject raw PC bytes through the registered production UART callback. */
-void Test_InjectUart(const uint8_t *data, uint16_t length)
+static TEST_UNUSED void Test_InjectUart(const uint8_t *DataPtr,
+                                        uint16_t Length)
 {
     uint16_t index;
-    assert(data != NULL && Test_UartRxCallback != NULL);
-    for (index = 0U; index < length; index++)
+    assert(DataPtr != NULL && Test_UartRxCallback != NULL);
+    for (index = 0U; index < Length; index++)
     {
-        Test_UartRxCallback(data[index]);
+        Test_UartRxCallback(DataPtr[index]);
     }
 }
 
-uint32_t Driver_SysTick_Init(uint32_t frequency, Driver_SysTick_Callback_t callback)
-{ assert(frequency == 1000U && callback == NULL); Test_Tick = 0U; return 0U; }
+uint32_t Driver_SysTick_Init(uint32_t Frequency,
+                             Driver_SysTick_Callback_t Callback)
+{
+    assert(Frequency == 1000U && Callback == NULL);
+    Test_Tick = 0U;
+    return 0U;
+}
 
 uint32_t Driver_SysTick_GetTicks(void)
 {
-    if (Test_Tick >= Test_StopAt) { longjmp(Test_StopPoint, 1); }
+    if (Test_Tick >= Test_StopAt)
+    {
+        longjmp(Test_StopPoint, 1);
+    }
     Test_Tick++;
-    if (Test_Tick == Test_JumpAt) { Test_Tick += 2U; }
+    if (Test_Tick == Test_JumpAt)
+    {
+        Test_Tick += 2U;
+    }
     return Test_Tick;
 }
 
-/** Run the real application entry with deterministic virtual peripherals. */
-static void Test_RunApp(uint32_t stopAt)
+static TEST_UNUSED void Test_RunApp(uint32_t StopAt)
 {
-    Test_StopAt = stopAt;
+    Test_StopAt = StopAt;
     if (setjmp(Test_StopPoint) == 0)
     {
         (void)App_Entry();

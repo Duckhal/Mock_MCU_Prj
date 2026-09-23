@@ -1,51 +1,43 @@
 #include <assert.h>
 #include <stdio.h>
-#include <string.h>
+
+#define APP_BOARD_ROLE (0U)
 #include "app_host_fixture.h"
 
-/** Verify that app.c owns CanTp submission and consumes NodeApp Rx messages. */
+/** Verify the Master image selects only its compile-time communication profile. */
 int main(void)
 {
-    uint8_t txData[8] = {0x10U, 0x20U, 0x30U, 0x40U,
-                         0x50U, 0x60U, 0x70U, 0x80U};
-    uint8_t rxData[5] = {0xA1U, 0xA2U, 0xA3U, 0xA4U, 0xA5U};
-
     (void)Test_RunApp;
-    (void)Test_InjectUart;
+    (void)Test_InjectKeepAlive;
+    (void)Test_QueueNodeRx;
+    (void)Test_ConfirmNodeTx;
+
     assert(App_MainFunction(1U) == E_NOT_OK);
     assert(g_AppRuntimeStatus == APP_RUNTIME_NOT_INITIALIZED);
     assert(App_Init() == E_NOT_OK);
     assert(g_AppInitError == APP_INIT_ERROR_HARDWARE_NOT_READY);
     assert(App_HardwareInit() == E_OK);
     assert(App_Init() == E_OK);
-    assert(App_SendLargeMessage(txData, sizeof(txData)) == E_NOT_OK);
-    g_AppModeTx = 1U;
-    assert(App_SendLargeMessage(txData, sizeof(txData)) == E_OK);
-    assert(Test_NodeTransmitCount == 1U);
-    assert(Test_NodeTxLength == sizeof(txData));
-    assert(memcmp(Test_NodeTxData, txData, sizeof(txData)) == 0);
 
-    assert(App_SendLargeMessage(NULL, sizeof(txData)) == E_NOT_OK);
-    assert(g_AppCanTpTxRequests == 3U && g_AppCanTpTxRejects == 2U);
+    assert(g_AppRole == APP_ROLE_MASTER);
+    assert(Test_ComTxEnabled[COM_IPDU_TX_KEEPALIVE] == 1U);
+    assert(Test_ComTxEnabled[COM_IPDU_TX_SLAVE1_STATUS] == 0U);
+    assert(Test_ComTxEnabled[COM_IPDU_TX_SLAVE2_STATUS] == 0U);
+    assert(Test_CanTpDataRxEnabled == 1U);
+    assert(Test_AdcStartCount == 1U);
 
-    g_AppModeTx = 0U;
-    memcpy(Test_NodeRxData, rxData, sizeof(rxData));
-    Test_NodeRxLength = sizeof(rxData);
-    Test_NodeReadyCount = 1U;
+    Test_InjectSlaveStatus(0U, COM_SLAVE_STATUS_NORMAL);
+    Test_InjectSlaveStatus(1U, COM_SLAVE_STATUS_MASTER_LOST);
     assert(App_MainFunction(1U) == E_OK);
-    assert(g_AppCanTpRxMessages == 1U && g_AppCanTpRxErrors == 0U);
-    assert(g_AppLastCanTpRxLength == sizeof(rxData));
-    assert(memcmp(g_AppLastCanTpRxData, rxData, sizeof(rxData)) == 0);
-    assert(g_AppCanTpRxUartDeliveries == 1U);
-    assert(Test_UartRawTxLength == sizeof(rxData));
-    assert(memcmp(Test_UartRawTx, rxData, sizeof(rxData)) == 0);
+    assert(g_AppOnlineSlaveCount == 2U);
+    assert(g_AppSlaveReportedStatus[0] == COM_SLAVE_STATUS_NORMAL);
+    assert(g_AppSlaveReportedStatus[1] == COM_SLAVE_STATUS_MASTER_LOST);
 
-    g_AppLedMode = (uint8_t)(COM_LED_MODE_MAX + 1U);
+    g_AppRole = APP_ROLE_SLAVE1;
     assert(App_MainFunction(2U) == E_NOT_OK);
     assert(g_AppRuntimeStatus == APP_RUNTIME_STATE_CORRUPTION);
-    assert(g_AppStateCorruptionCount == 1U);
-    assert(g_AppStateErrorMask == APP_STATE_ERROR_LED_COMMAND);
+    assert((g_AppStateErrorMask & APP_STATE_ERROR_LIFECYCLE) != 0U);
 
-    puts("PASS: app owns CanTp messages and rejects corrupt LED command state.");
+    puts("PASS: MASTER build enables only the Master communication profile.");
     return 0;
 }

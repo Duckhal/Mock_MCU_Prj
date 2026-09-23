@@ -6,6 +6,7 @@
 #include <string.h>
 
 static uint8_t CanTp_Initialized;
+static uint8_t CanTp_DataRxEnabled;
 static uint32_t CanTp_NowMs;
 static CanTp_TxRuntimeType CanTp_TxRuntime;
 static CanTp_RxRuntimeType CanTp_RxRuntime;
@@ -279,8 +280,8 @@ static void CanTp_RequestPreparedDataFrame(void)
     }
 }
 
-/* Build one immutable CTS frame and schedule its first transmit attempt. */
-static Std_ReturnType CanTp_PrepareCts(void)
+/* Build one immutable CTS or OVFLW frame without overwriting an FC operation. */
+static Std_ReturnType CanTp_PrepareFlowControl(CanTp_FlowStatusType Status)
 {
     if ((CanTp_RxRuntime.fcRequestActive != 0U) ||
         (CanTp_RxRuntime.fcTxPending != 0U))
@@ -291,18 +292,21 @@ static Std_ReturnType CanTp_PrepareCts(void)
     memset(CanTp_RxRuntime.txFcFrame, CANTP_PADDING_BYTE,
            CANTP_FRAME_LENGTH);
     CanTp_RxRuntime.txFcFrame[0] =
-        (uint8_t)(CANTP_PCI_FC | CANTP_FC_CTS);
-    CanTp_RxRuntime.txFcFrame[1] = CANTP_BLOCK_SIZE;
-    CanTp_RxRuntime.txFcFrame[2] = CANTP_STMIN_MS;
+        (uint8_t)(CANTP_PCI_FC | (uint8_t)Status);
+    if (Status == CANTP_FC_CTS)
+    {
+        CanTp_RxRuntime.txFcFrame[1] = CANTP_BLOCK_SIZE;
+        CanTp_RxRuntime.txFcFrame[2] = CANTP_STMIN_MS;
+        CanTp_RxRuntime.nCrActive = 0U;
+        CanTp_RxRuntime.state = CANTP_RX_FC_PENDING;
+    }
     CanTp_RxRuntime.fcRequestActive = 1U;
     CanTp_RxRuntime.fcRetryCount = 0U;
     CanTp_RxRuntime.fcAttemptDueMs = CanTp_NowMs;
-    CanTp_RxRuntime.nCrActive = 0U;
-    CanTp_RxRuntime.state = CANTP_RX_FC_PENDING;
     return E_OK;
 }
 
-/* Attempt one immutable CTS frame and schedule bounded retry on rejection. */
+/* Attempt one immutable CTS or OVFLW frame with bounded rejection retries. */
 static void CanTp_RequestPreparedFc(void)
 {
     const CanTp_ConnectionConfigType *config = CanTp_GetConnection();
@@ -332,7 +336,14 @@ static void CanTp_RequestPreparedFc(void)
         else
         {
             CanTp_RxRuntime.fcRequestActive = 0U;
-            CanTp_AbortRx(CANTP_ABORT_FC_RETRY_EXHAUSTED);
+            if (CanTp_RxRuntime.queueSlotReserved != 0U)
+            {
+                CanTp_AbortRx(CANTP_ABORT_FC_RETRY_EXHAUSTED);
+            }
+            else
+            {
+                CanTp_ResetRxSession();
+            }
         }
         return;
     }
@@ -340,7 +351,8 @@ static void CanTp_RequestPreparedFc(void)
     CanTp_RxRuntime.nArStartMs = CanTp_NowMs;
     CanTp_RxRuntime.nArActive = 1U;
     CanTp_Log(CANTP_LOG_FC_REQUEST, config->txFcNPduId,
-              (uint32_t)CanTp_RxRuntime.state, CANTP_FC_CTS);
+              (uint32_t)CanTp_RxRuntime.state,
+              (uint32_t)(CanTp_RxRuntime.txFcFrame[0] & CANTP_PCI_SN_MASK));
 }
 
 /* Commit one Data frame only after its matching local confirmation. */
@@ -414,13 +426,21 @@ static void CanTp_HandleSingleFrame(const PduInfoType *Frame)
 {
     const CanTp_ConnectionConfigType *config = CanTp_GetConnection();
     PduLengthType length = Frame->SduDataPtr[1];
-    if ((CanTp_RxRuntime.state != CANTP_RX_IDLE) ||
-        (CanTp_RxRuntime.fcRequestActive != 0U) ||
-        (CanTp_RxRuntime.fcTxPending != 0U) ||
-        (length < CANTP_SF_MIN_LENGTH) ||
+    if ((length < CANTP_SF_MIN_LENGTH) ||
         (length > CANTP_SF_MAX_LENGTH))
     {
         return;
+    }
+    if ((CanTp_RxRuntime.fcRequestActive != 0U) ||
+        (CanTp_RxRuntime.fcTxPending != 0U) ||
+        ((CanTp_RxRuntime.state != CANTP_RX_IDLE) &&
+         (CanTp_RxRuntime.queueSlotReserved == 0U)))
+    {
+        return;
+    }
+    if (CanTp_RxRuntime.state != CANTP_RX_IDLE)
+    {
+        CanTp_AbortRx(CANTP_ABORT_RX_REPLACED);
     }
     if (PduR_CanTpStartOfReception(config->rxNSduId, length) != BUFREQ_OK)
     {
@@ -441,17 +461,36 @@ static void CanTp_HandleFirstFrame(const PduInfoType *Frame)
 {
     const CanTp_ConnectionConfigType *config = CanTp_GetConnection();
     PduLengthType totalLength = Frame->SduDataPtr[1];
-    if ((CanTp_RxRuntime.state != CANTP_RX_IDLE) ||
-        (CanTp_RxRuntime.fcRequestActive != 0U) ||
-        (CanTp_RxRuntime.fcTxPending != 0U) ||
-        (totalLength < CANTP_FF_MIN_LENGTH) ||
-        (totalLength > CANTP_FF_MAX_LENGTH))
+    if (totalLength < CANTP_FF_MIN_LENGTH)
     {
         return;
+    }
+    if ((CanTp_RxRuntime.fcRequestActive != 0U) ||
+        (CanTp_RxRuntime.fcTxPending != 0U))
+    {
+        return;
+    }
+    if (totalLength > CANTP_FF_MAX_LENGTH)
+    {
+        if (CanTp_RxRuntime.state == CANTP_RX_IDLE)
+        {
+            (void)CanTp_PrepareFlowControl(CANTP_FC_OVFLW);
+        }
+        return;
+    }
+    if ((CanTp_RxRuntime.state != CANTP_RX_IDLE) &&
+        (CanTp_RxRuntime.queueSlotReserved == 0U))
+    {
+        return;
+    }
+    if (CanTp_RxRuntime.state != CANTP_RX_IDLE)
+    {
+        CanTp_AbortRx(CANTP_ABORT_RX_REPLACED);
     }
     if (PduR_CanTpStartOfReception(config->rxNSduId,
                                     totalLength) != BUFREQ_OK)
     {
+        (void)CanTp_PrepareFlowControl(CANTP_FC_OVFLW);
         return;
     }
 
@@ -462,7 +501,7 @@ static void CanTp_HandleFirstFrame(const PduInfoType *Frame)
     CanTp_RxRuntime.queueSlotReserved = 1U;
     memcpy(CanTp_RxRuntime.rxChunkBuffer, &Frame->SduDataPtr[2],
            CANTP_FF_PAYLOAD_LENGTH);
-    if (CanTp_PrepareCts() != E_OK)
+    if (CanTp_PrepareFlowControl(CANTP_FC_CTS) != E_OK)
     {
         CanTp_AbortRx(CANTP_ABORT_COPY_FAILURE);
     }
@@ -506,7 +545,7 @@ static void CanTp_HandleConsecutiveFrame(const PduInfoType *Frame)
     }
     else if (CanTp_RxRuntime.blockCount == CANTP_BLOCK_SIZE)
     {
-        if (CanTp_PrepareCts() != E_OK)
+        if (CanTp_PrepareFlowControl(CANTP_FC_CTS) != E_OK)
         {
             CanTp_AbortRx(CANTP_ABORT_COPY_FAILURE);
         }
@@ -571,7 +610,23 @@ Std_ReturnType CanTp_Init(void)
     CanTp_RxRuntime.state = CANTP_RX_IDLE;
     CanTp_RxRuntime.expectedSN = 1U;
     CanTp_Initialized = 1U;
+    CanTp_DataRxEnabled = 1U;
     CanTp_Log(CANTP_LOG_INIT_OK, 0U, 0U, CANTP_NUM_CONNECTIONS);
+    return E_OK;
+}
+
+/* Select whether this ECU participates as a CanTp Data receiver. */
+Std_ReturnType CanTp_SetDataRxEnabled(uint8_t Enabled)
+{
+    if ((CanTp_Initialized == 0U) || (Enabled > 1U) ||
+        ((Enabled == 0U) &&
+         ((CanTp_RxRuntime.state != CANTP_RX_IDLE) ||
+          (CanTp_RxRuntime.fcRequestActive != 0U) ||
+          (CanTp_RxRuntime.fcTxPending != 0U))))
+    {
+        return E_NOT_OK;
+    }
+    CanTp_DataRxEnabled = Enabled;
     return E_OK;
 }
 
@@ -627,6 +682,10 @@ void CanTp_RxIndication(PduIdType RxNPduId,
               (uint32_t)CanTp_RxRuntime.state, pci);
     if (RxNPduId == config->rxDataNPduId)
     {
+        if (CanTp_DataRxEnabled == 0U)
+        {
+            return;
+        }
         if (pci == CANTP_PCI_SF)
         {
             CanTp_HandleSingleFrame(PduInfoPtr);
@@ -688,14 +747,21 @@ static void CanTp_CheckTimeouts(void)
         CanTp_AbortTx(CANTP_ABORT_N_BS_TIMEOUT);
     }
 
-    if ((CanTp_RxRuntime.state == CANTP_RX_FC_PENDING) &&
+    if ((CanTp_RxRuntime.fcTxPending != 0U) &&
         (CanTp_RxRuntime.nArActive != 0U) &&
         (CanTp_HasElapsed(CanTp_RxRuntime.nArStartMs,
                           CANTP_N_AR_MS) != 0U))
     {
         CanTp_Log(CANTP_LOG_TIMEOUT, config->txFcNPduId,
                   (uint32_t)CanTp_RxRuntime.state, CANTP_N_AR_MS);
-        CanTp_AbortRx(CANTP_ABORT_N_AR_TIMEOUT);
+        if (CanTp_RxRuntime.queueSlotReserved != 0U)
+        {
+            CanTp_AbortRx(CANTP_ABORT_N_AR_TIMEOUT);
+        }
+        else
+        {
+            CanTp_ResetRxSession();
+        }
     }
     else if ((CanTp_RxRuntime.state == CANTP_RX_WAIT_CF) &&
              (CanTp_RxRuntime.nCrActive != 0U) &&
@@ -729,8 +795,7 @@ void CanTp_MainFunction(void)
     {
         CanTp_RequestPreparedDataFrame();
     }
-    if ((CanTp_RxRuntime.state == CANTP_RX_FC_PENDING) &&
-        (CanTp_RxRuntime.fcRequestActive != 0U) &&
+    if ((CanTp_RxRuntime.fcRequestActive != 0U) &&
         (CanTp_RxRuntime.fcTxPending == 0U))
     {
         CanTp_RequestPreparedFc();

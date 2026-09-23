@@ -2,6 +2,7 @@
 #define CANTP_CFG_H_
 
 #include "Cantp_Types.h"
+#include "../canif/CanIf_Cfg.h"
 
 /* Mock CanTp limits and fixed timing profile. */
 #define CANTP_NUM_CONNECTIONS          (1U)
@@ -46,10 +47,10 @@
 #define CANTP_TX_NPDU_FC               ((PduIdType)1U)
 #define CANTP_RX_NPDU_DATA             ((PduIdType)0U)
 #define CANTP_RX_NPDU_FC               ((PduIdType)1U)
-#define CANTP_CANIF_TX_LPDU_DATA       ((PduIdType)1U)
-#define CANTP_CANIF_TX_LPDU_FC         ((PduIdType)2U)
-#define CANTP_CANIF_RX_LPDU_DATA       ((PduIdType)1U)
-#define CANTP_CANIF_RX_LPDU_FC         ((PduIdType)2U)
+#define CANTP_CANIF_TX_LPDU_DATA       CANIF_TX_PDU_CANTP_DATA
+#define CANTP_CANIF_TX_LPDU_FC         CANIF_TX_PDU_CANTP_FC
+#define CANTP_CANIF_RX_LPDU_DATA       CANIF_RX_PDU_CANTP_DATA
+#define CANTP_CANIF_RX_LPDU_FC         CANIF_RX_PDU_CANTP_FC
 
 #define CANTP_DATA_CAN_ID              (0x650U)
 #define CANTP_FC_CAN_ID                (0x658U)
