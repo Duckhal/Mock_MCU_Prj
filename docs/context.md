@@ -3,6 +3,12 @@
 Kiến trúc tổng thể và các luồng COM/CanTp được trình bày tại
 `Architecture.md` ở thư mục gốc.
 
+The architecture handover now includes the concrete eight-Signal/six-Group/
+six-I-PDU model, byte-aligned Update Bits, per-I-PDU bounded COM retry,
+GlobalPduId-correlated KeepAlive Tx/Rx traces, and CanTp Tx/Rx state machines
+plus the 62-byte FF + 2 FC + 8 CF sequence. These diagrams describe the
+current CAN0 implementation; they do not assert multi-controller support.
+
 ## UART image-size diagnosis (2026-09-24)
 
 - `ascii_cat_512B_showcase.txt` is 512 raw bytes and

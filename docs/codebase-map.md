@@ -3,6 +3,10 @@
 Tài liệu kiến trúc đầy đủ, gồm sơ đồ tầng, sequence và PDU mapping, nằm tại
 `Architecture.md` ở thư mục gốc.
 
+For handover diagrams, see `Architecture.md` sections 7.1-7.6 for COM
+Signal/Group/I-PDU, Update Bit, retry and GlobalPduId traces, and sections
+8.3-8.5 for the implemented CanTp states and 62-byte segmented sequence.
+
 ## Composition and scheduler
 
 | Area | Main files | Responsibility |

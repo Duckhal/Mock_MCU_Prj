@@ -147,7 +147,39 @@ Global PDU ID.
 
 ## 7. COM Signal Path
 
-### 7.1 Wire Format
+### 7.1 Signal, Group, and I-PDU Model
+
+The Part 1 configuration uses `Signal -> exactly one Signal Group -> exactly
+one I-PDU`. Conversely, each I-PDU contains exactly one group. A Signal is the
+update unit, its group is the packing unit, and the I-PDU is the periodic
+scheduling and transmission unit. Tx and Rx have separate local objects even
+when they represent the same logical message and share a `GlobalPduId`.
+
+```mermaid
+flowchart LR
+    A["AliveCounter Signal 0"] --> G["KeepAlive Tx Group 0"]
+    L["RateLevel Signal 1"] --> G
+    G --> I["KeepAlive Tx I-PDU 0, GlobalPduId 0x0010"]
+    I --> R["PduR route to CanIf L-PDU 0, CAN ID 0x100"]
+```
+
+| Signals (local IDs) | Group (local ID) | I-PDU (local ID) | Global PDU ID | Slot positions |
+| --- | ---: | ---: | ---: | --- |
+| Tx AliveCounter `0`, RateLevel `1` | Tx KeepAlive `0` | Tx KeepAlive `0` | `0x0010` | bits `0..7`, `8..15` |
+| Rx AliveCounter `2`, RateLevel `3` | Rx KeepAlive `1` | Rx KeepAlive `1` | `0x0010` | bits `0..7`, `8..15` |
+| Tx Slave 1 Status `4` | Tx Status 1 `2` | Tx Status 1 `2` | `0x0011` | bits `0..7` |
+| Rx Slave 1 Status `5` | Rx Status 1 `3` | Rx Status 1 `3` | `0x0011` | bits `0..7` |
+| Tx Slave 2 Status `6` | Tx Status 2 `4` | Tx Status 2 `4` | `0x0012` | bits `0..7` |
+| Rx Slave 2 Status `7` | Rx Status 2 `5` | Rx Status 2 `5` | `0x0012` | bits `0..7` |
+
+`Com_Cfg.c` owns these associations, slot positions, I-PDU lengths, periods,
+initial offsets, and retry limits. `PduR_Cfg.c` owns the cross-layer routes;
+`CanIf_Cfg.c` owns the CAN IDs and HTH/HRH references. The runtime enables
+only the Tx I-PDU assigned to the compiled board role.
+All application Signals use `uint8` values: `AliveCounter` is `0..127`,
+`RateLevel` is `0..6`, and Slave Status is `0..1`.
+
+### 7.2 Signal Slots and Wire Format
 
 Every COM I-PDU has DLC 8:
 
@@ -161,6 +193,12 @@ Slave 2 Status: [(Status << 1) | U][00][00][00][00][00][00][00]
   the Signal payload. `Com_SendSignal()` sets `U = 1`, and COM clears it only
   after the lower layer accepts the I-PDU. A later periodic frame can carry
   the same payload with `U = 0`.
+- Every slot starts on a byte boundary and is eight bits long in the current
+  configuration. The general Part 1 rule is `startBit % 8 == 0`,
+  `slotLength % 8 == 0`, and `payloadBits = slotLength - 1`; slots cannot
+  overlap or extend beyond the I-PDU. For an eight-bit slot,
+  `wireByte = (value << 1) | U`, `value = wireByte >> 1`, and
+  `U = wireByte & 1`.
 - `AliveCounter` retains the application type `uint8`, but its valid range is
   `0..127` and it wraps from 127 to 0.
 - `RateLevel` is in the range `0..6`.
@@ -170,7 +208,7 @@ Slave 2 Status: [(Status << 1) | U][00][00][00][00][00][00][00]
 COM schedules KeepAlive every 10 ms and each Slave Status every 500 ms. The
 application enables only the Tx I-PDU owned by the selected firmware role.
 
-### 7.2 Tx Sequence
+### 7.3 Tx Sequence
 
 ```mermaid
 sequenceDiagram
@@ -194,7 +232,7 @@ sequenceDiagram
 `Com_SendSignal()` updates only the Signal value. `Com_MainFunctionTx()` decides
 when to transmit the I-PDU according to its period and pending/retry state.
 
-### 7.3 Rx Sequence
+### 7.4 Rx Sequence
 
 ```mermaid
 sequenceDiagram
@@ -214,6 +252,68 @@ sequenceDiagram
 
 CanIf filters frames by HRH and CAN ID. PduR uses its Rx route table to select
 the COM I-PDU. The application reads the latest snapshot through the COM APIs.
+
+### 7.5 Periodic Tx and Bounded Retry
+
+Each enabled Tx I-PDU has a runtime `counter`, `pending` flag, and
+`retryCount`. Its configuration provides `periodTicks`, `initialOffsetTicks`,
+and `maxRetries`. KeepAlive uses `10 / 1 / 3` ticks; each Slave Status uses
+`500 / 1 / 3` ticks. One tick is 1 ms. On enabling an I-PDU, COM initializes
+the counter to its offset and clears pending/retry state.
+
+```mermaid
+flowchart TD
+    T["Each 1 ms COM tick, in static I-PDU order"] --> C["Decrement counter if positive"]
+    C --> Z{"Counter zero?"}
+    Z -- Yes --> R["If not pending: set pending and retryCount=0; reload period"]
+    Z -- No --> P{"Pending?"}
+    R --> P
+    P -- No --> N[Next configured I-PDU]
+    P -- Yes --> X["One PduR_ComTransmit attempt"]
+    X --> OK{"E_OK?"}
+    OK -- Yes --> A["Clear pending and retryCount; clear slot Update Bits"]
+    OK -- No --> B{"retryCount < maxRetries?"}
+    B -- Yes --> Y["Increment retryCount; keep pending and Update Bits"]
+    B -- No --> D["Drop this occurrence; clear pending and retryCount; keep Update Bits"]
+    A --> N
+    Y --> N
+    D --> N
+```
+
+With `maxRetries = 3`, an occurrence gets one initial attempt and at most
+three later retries, one attempt per 1 ms COM tick. A nominal period arriving
+while `pending = 1` is coalesced; it does not create a queue of occurrences.
+Dropping an occurrence does not disable the I-PDU: the next nominal period can
+send again. `PduR_ComTransmit() == E_OK` means the lower layer accepted the
+request, so COM clears Update Bits at that point; the later CAN Tx confirmation
+only increments COM's confirmation count.
+
+### 7.6 End-to-End Trace with GlobalPduId
+
+For a KeepAlive update of `AliveCounter = 1` and `RateLevel = 6`, both with
+`U = 1`, the first two CAN data bytes are `03 0D`. The remaining six bytes
+are zero. The configured direct binding gives the same logical identity at
+every layer without serializing `GlobalPduId` in those eight bytes:
+
+```text
+Tx on Master:
+App -> Com_SendSignal(0, 1) and Com_SendSignal(1, 6)
+    -> Group 0 -> COM Tx I-PDU 0 [GlobalPduId 0x0010]
+    -> PduR Tx route 0 -> CanIf Tx L-PDU 0
+    -> CAN ID 0x100, HTH 0 -> CAN0 / MB8 -> data 03 0D 00 00 00 00 00 00
+
+Rx on either Slave:
+CAN0 / MB9 -> HRH 1 + CAN ID 0x100 -> CanIf Rx L-PDU 0
+    -> PduR Rx route 0 [GlobalPduId 0x0010] -> COM Rx I-PDU 1
+    -> Group 1 -> Rx Signals 2 and 3 -> decoded values 1 and 6
+```
+
+The Tx and Rx I-PDU numbers are module-local handles, not the global ID. The
+one-to-one `GlobalPduId <-> CanIf L-PDU <-> CAN ID` mapping identifies this
+message as `0x0010` in configuration and traces. Status follows the same path
+with `0x0011 <-> 0x201` or `0x0012 <-> 0x202`. A trace can recover the global
+identity from the configured `HRH + CAN ID` Rx mapping; it is not a payload
+header.
 
 ## 8. CanTp Path
 
@@ -275,6 +375,121 @@ in its internal buffer, copies the N-SDU into the reserved slot, and then sends
 the final Rx indication. The application consumes only slots in the `READY`
 state.
 
+### 8.3 CanTp Tx State Machine (Six States)
+
+These are the six values of `CanTp_TxStateType` in `Cantp_Types.h`. `PREPARE`
+is transient when a request is first accepted. Later CF preparation calls
+`CanTp_PrepareDataFrame()` directly, which enters `REQUEST_TX`.
+
+```mermaid
+stateDiagram-v2
+    [*] --> TX_IDLE
+    TX_IDLE --> TX_PREPARE: Accept N-SDU; copy Tx snapshot once
+    TX_PREPARE --> TX_REQUEST_TX: Prepare immutable SF or FF
+    TX_PREPARE --> TX_IDLE: Copy failure; report E_NOT_OK
+    TX_REQUEST_TX --> TX_REQUEST_TX: CanIf rejects; retry on next tick, up to 3
+    TX_REQUEST_TX --> TX_WAIT_CONFIRM: CanIf accepts; mark pending, start N_As
+    TX_REQUEST_TX --> TX_IDLE: Fourth rejection; abort N-SDU
+    TX_WAIT_CONFIRM --> TX_IDLE: Final Data confirmed; commit and complete
+    TX_WAIT_CONFIRM --> TX_WAIT_FC: FF or fourth CF confirmed; start N_Bs
+    TX_WAIT_CONFIRM --> TX_WAIT_STMIN: CF confirmed; block quota remains
+    TX_WAIT_CONFIRM --> TX_IDLE: N_As timeout; abort, retain pending Data lock
+    TX_WAIT_FC --> TX_REQUEST_TX: Valid CTS; first CF has no prior CF STmin gate
+    TX_WAIT_FC --> TX_WAIT_STMIN: Valid CTS; prior CF STmin still gates next CF
+    TX_WAIT_FC --> TX_IDLE: Invalid FC, OVFLW or N_Bs timeout; abort
+    TX_WAIT_STMIN --> TX_REQUEST_TX: CTS permission and STmin satisfied
+```
+
+`txOffset`, `nextSN`, and `blockCount` change only after the matching Data
+TxConfirmation, never when CanIf merely accepts a frame. STmin is measured
+from the preceding CF's local confirmation. After N_As abort, a late Data
+confirmation releases `txPduPending` without committing data or reporting a
+second result; a new N-SDU remains blocked until that release.
+
+### 8.4 CanTp Rx State Machine (Three States)
+
+```mermaid
+stateDiagram-v2
+    [*] --> RX_IDLE
+    RX_IDLE --> RX_IDLE: Valid SF; reserve, copy complete N-SDU, publish READY
+    RX_IDLE --> RX_IDLE: Invalid frame or no room; discard or send standalone OVFLW
+    RX_IDLE --> RX_FC_PENDING: Valid FF; reserve slot, append 6 bytes, prepare CTS
+    RX_FC_PENDING --> RX_FC_PENDING: FC request rejected; retry on next tick
+    RX_FC_PENDING --> RX_WAIT_CF: CTS confirmed; start N_Cr
+    RX_FC_PENDING --> RX_IDLE: FC retry exhausted or N_Ar timeout; abort
+    RX_WAIT_CF --> RX_WAIT_CF: Valid CF; append bytes, next CF expected
+    RX_WAIT_CF --> RX_FC_PENDING: Fourth CF and data remains; prepare next CTS
+    RX_WAIT_CF --> RX_IDLE: Final CF; copy once, publish READY, notify E_OK
+    RX_WAIT_CF --> RX_IDLE: Wrong SN or N_Cr timeout; abort and release slot
+    RX_WAIT_CF --> RX_IDLE: New valid SF with FC resource idle; replace old session
+    RX_WAIT_CF --> RX_FC_PENDING: New valid FF with FC resource idle; replace old session
+```
+
+`fcRequestActive` and `fcTxPending` protect the FC frame independently of the
+three Rx states. An `RX_IDLE` receiver can therefore still be sending a
+standalone OVFLW. `N_Cr` begins after local CTS confirmation and pauses while
+a new CTS is pending. A failed session releases its reserved slot, not older
+`READY` slots; the application never receives a partial N-SDU.
+
+### 8.5 Segmented 62-Byte Trace: FF, Two FC, Eight CF
+
+The T03 payload is `00..3D` (62 bytes). The FF carries six bytes and eight
+CFs carry seven bytes each: `6 + 8 * 7 = 62`. `BS = 4` requires CTS after the
+FF and after CF4. All 11 CAN frames have DLC 8; Data uses CAN ID `0x650` and
+FC uses `0x658`.
+
+```mermaid
+sequenceDiagram
+    participant A as Master CanTp Tx
+    participant Bus as CanIf / CanDrv / CAN
+    participant B as Slave 1 CanTp Rx
+    participant Q as NodeApp Rx queue
+    A->>Bus: FF 10 3E 00 01 02 03 04 05
+    Bus-->>A: Data confirmation; txOffset=6, WAIT_FC
+    Bus->>B: FF received; reserve slot, receivedLength=6
+    B->>Q: StartOfReception(62), reserve
+    B->>Bus: FC1 30 04 05 00 00 00 00 00
+    Bus-->>B: FC confirmation; start N_Cr
+    Bus->>A: CTS1 received; permit CF1..CF4
+    A->>Bus: CF1 21 06 07 08 09 0A 0B 0C
+    Bus-->>A: Confirm; txOffset=13, start STmin
+    Bus->>B: CF1; receivedLength=13
+    A->>Bus: CF2 22 0D 0E 0F 10 11 12 13
+    Bus-->>A: Confirm; txOffset=20, start STmin
+    Bus->>B: CF2; receivedLength=20
+    A->>Bus: CF3 23 14 15 16 17 18 19 1A
+    Bus-->>A: Confirm; txOffset=27, start STmin
+    Bus->>B: CF3; receivedLength=27
+    A->>Bus: CF4 24 1B 1C 1D 1E 1F 20 21
+    Bus-->>A: Confirm; txOffset=34, WAIT_FC
+    Bus->>B: CF4; receivedLength=34, next CTS
+    B->>Bus: FC2 30 04 05 00 00 00 00 00
+    Bus-->>B: FC confirmation; restart N_Cr
+    Bus->>A: CTS2 received; permit CF5..CF8
+    Note over A,B: CF5 also waits at least 5 ms after CF4 local confirmation
+    A->>Bus: CF5 25 22 23 24 25 26 27 28
+    Bus-->>A: Confirm; txOffset=41, start STmin
+    Bus->>B: CF5; receivedLength=41
+    A->>Bus: CF6 26 29 2A 2B 2C 2D 2E 2F
+    Bus-->>A: Confirm; txOffset=48, start STmin
+    Bus->>B: CF6; receivedLength=48
+    A->>Bus: CF7 27 30 31 32 33 34 35 36
+    Bus-->>A: Confirm; txOffset=55, start STmin
+    Bus->>B: CF7; receivedLength=55
+    A->>Bus: CF8 28 37 38 39 3A 3B 3C 3D
+    Bus-->>A: Confirm; txOffset=62, one final Tx E_OK
+    Bus->>B: CF8; receivedLength=62
+    B->>Q: CopyRxData(62) once; RESERVED to READY
+    B-->>Q: One final Rx E_OK
+    Note over A,B: No third FC; no application-level ACK
+```
+
+The drawing groups each frame's local confirmation and peer reception for
+readability; it does not guarantee their order across ECUs. Every consecutive
+CF request must satisfy `next request - previous CF local confirmation >= 5
+ms`, including CF4 to CF5. Sender completion is local and independent of the
+receiver's `READY` transition.
+
 ## 9. Application Roles
 
 The firmware role is selected through `APP_BOARD_ROLE` in `app/app.h` or a
@@ -330,6 +545,13 @@ The CAN Driver supports one controller:
 | Tx hardware object | HTH `0`, Message Buffer 8 |
 | Rx hardware object | HRH `1`, Message Buffer 9 |
 | Service model | Polling |
+
+In the Part 1 configuration model, each hardware object has a unique
+`CanObjectId` in a common HTH/HRH namespace and references exactly one
+controller. Thus an HTH or HRH resolves both its hardware object and its
+controller, even when one CanDrv instance defines several controllers. This
+project's active configuration contains only CAN0; the table above describes
+implemented hardware, not a second-controller implementation.
 
 The driver has one active Tx mailbox and no software Tx queue. When the mailbox
 is busy, the upper layer receives a busy/failure result and retries according
