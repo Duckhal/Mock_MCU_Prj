@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 
+#define APP_BOARD_ROLE (0U)
 #define SYSTEM_ENABLE_UART_CANTP_LOOPBACK (1U)
 #include "app_host_fixture.h"
 

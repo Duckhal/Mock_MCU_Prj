@@ -46,6 +46,23 @@ int main(void)
     assert(Test_ComSendCount[COM_SIGNAL_TX_ALIVE_COUNTER] == 1U);
     assert(Test_ComSendCount[COM_SIGNAL_TX_KEEPALIVE_RATE] == 1U);
 
-    puts("PASS: MASTER maps ADC 0..4095 to levels 0..6 and emits KeepAlive.");
+    /* Level 6 has a 200 ms full cycle: 100 ms ON, then 100 ms OFF. */
+    assert(Test_LedState[0] == 1U);
+    for (index = 6U; index <= 100U; index++)
+    {
+        assert(App_MainFunction(index) == E_OK);
+    }
+    assert(Test_LedState[0] == 1U);
+    assert(App_MainFunction(101U) == E_OK);
+    assert(Test_LedState[0] == 0U);
+    for (index = 102U; index <= 200U; index++)
+    {
+        assert(App_MainFunction(index) == E_OK);
+    }
+    assert(Test_LedState[0] == 0U);
+    assert(App_MainFunction(201U) == E_OK);
+    assert(Test_LedState[0] == 1U);
+
+    puts("PASS: MASTER maps ADC levels, emits KeepAlive, and mirrors LED timing.");
     return 0;
 }

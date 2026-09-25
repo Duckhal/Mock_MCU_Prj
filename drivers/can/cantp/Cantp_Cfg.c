@@ -1,8 +1,7 @@
 #include "Cantp_Cfg.h"
 
 /* Configure one dedicated bidirectional Phase-2 CanTp connection. */
-const CanTp_ConnectionConfigType
-CanTp_ConnectionConfig[CANTP_NUM_CONNECTIONS] =
+const CanTp_ConnectionConfigType CanTp_ConnectionConfig[CANTP_NUM_CONNECTIONS] =
 {
     {
         .txNSduId = CANTP_TX_NSDU,

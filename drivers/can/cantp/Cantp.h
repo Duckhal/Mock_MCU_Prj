@@ -30,16 +30,14 @@ Std_ReturnType CanTp_SetDataRxEnabled(uint8_t Enabled);
  * E_OK means that CanTp owns the request. Final transfer status is reported
  * later through the PduR Tx-confirmation callback.
  */
-Std_ReturnType CanTp_Transmit(PduIdType TxNSduId,
-                              const PduInfoType *PduInfoPtr);
+Std_ReturnType CanTp_Transmit(PduIdType TxNSduId, const PduInfoType *PduInfoPtr);
 
 /*
  * @brief Receive one complete eight-byte Data or Flow Control N-PDU.
  * @param RxNPduId Configured receive N-PDU handle.
  * @param PduInfoPtr Frame payload, valid only during this callback.
  */
-void CanTp_RxIndication(PduIdType RxNPduId,
-                        const PduInfoType *PduInfoPtr);
+void CanTp_RxIndication(PduIdType RxNPduId, const PduInfoType *PduInfoPtr);
 
 /*
  * @brief Receive local confirmation for one Data or Flow Control N-PDU.

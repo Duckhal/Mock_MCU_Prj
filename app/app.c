@@ -90,6 +90,38 @@ static uint8_t App_ImageChunkValid;
 static uint8_t App_ImageChunkRetryCount;
 static uint32_t App_TxConfirmationBaseline;
 
+/* Restart the blue-LED indication when the active KeepAlive rate changes. */
+static void App_StartRateLed(uint32_t Tick)
+{
+    App_LastLedToggleTick = Tick;
+    App_BlueLedOn = 1U;
+    LED_On(LED_BLUE);
+}
+
+/* Advance the blue LED at half of the selected full-cycle period. */
+static void App_UpdateRateLed(uint32_t Tick)
+{
+    uint32_t halfPeriod;
+    uint32_t transitions;
+    if ((g_AppRole != APP_ROLE_MASTER) &&
+        (g_AppSlaveStatus == COM_SLAVE_STATUS_MASTER_LOST))
+    {
+        return;
+    }
+    halfPeriod = App_LedFullCyclePeriods[g_AppKeepAliveRateLevel] / 2U;
+    transitions = (uint32_t)(Tick - App_LastLedToggleTick) / halfPeriod;
+    if (transitions > 0U)
+    {
+        App_LastLedToggleTick += transitions * halfPeriod;
+        if ((transitions & 1U) != 0U)
+        {
+            App_BlueLedOn ^= 1U;
+            LED_Write(LED_BLUE, (App_BlueLedOn != 0U) ?
+                      LED_STATE_ON : LED_STATE_OFF);
+        }
+    }
+}
+
 /* Validate every index and lifecycle flag used by role-specific policies. */
 static Std_ReturnType App_ValidateState(void)
 {
@@ -206,8 +238,8 @@ static uint8_t App_MapAdcToRateLevel(uint16_t AdcValue)
     return (uint8_t)level;
 }
 
-/* Poll the Master ADC and reload the software KeepAlive period on level change. */
-static Std_ReturnType App_ProcessAdc(void)
+/* Poll the Master ADC and restart rate timing when its level changes. */
+static Std_ReturnType App_ProcessAdc(uint32_t Tick)
 {
     uint8_t level;
     if (g_AppRole != APP_ROLE_MASTER)
@@ -225,6 +257,7 @@ static Std_ReturnType App_ProcessAdc(void)
         {
             g_AppKeepAliveRateLevel = level;
             App_KeepAliveCountdown = App_KeepAlivePeriods[level];
+            App_StartRateLed(Tick);
         }
     }
     if (App_AdcConversionPending == 0U)
@@ -288,38 +321,6 @@ static Std_ReturnType App_WriteSlaveStatus(void)
     return E_OK;
 }
 
-/* Start a human-visible blue-LED cycle for one valid KeepAlive rate level. */
-static void App_StartSlaveLed(uint32_t Tick)
-{
-    App_LastLedToggleTick = Tick;
-    App_BlueLedOn = 1U;
-    LED_On(LED_BLUE);
-}
-
-/* Advance the Slave LED at half of the configured full-cycle period. */
-static void App_UpdateSlaveLed(uint32_t Tick)
-{
-    uint32_t halfPeriod;
-    uint32_t transitions;
-    if ((g_AppRole == APP_ROLE_MASTER) ||
-        (g_AppSlaveStatus == COM_SLAVE_STATUS_MASTER_LOST))
-    {
-        return;
-    }
-    halfPeriod = App_LedFullCyclePeriods[g_AppKeepAliveRateLevel] / 2U;
-    transitions = (uint32_t)(Tick - App_LastLedToggleTick) / halfPeriod;
-    if (transitions > 0U)
-    {
-        App_LastLedToggleTick += transitions * halfPeriod;
-        if ((transitions & 1U) != 0U)
-        {
-            App_BlueLedOn ^= 1U;
-            LED_Write(LED_BLUE, (App_BlueLedOn != 0U) ?
-                      LED_STATE_ON : LED_STATE_OFF);
-        }
-    }
-}
-
 /* Consume KeepAlive events and derive Slave NORMAL/MASTER_LOST state. */
 static Std_ReturnType App_ProcessSlaveKeepAlive(uint32_t Tick)
 {
@@ -363,7 +364,7 @@ static Std_ReturnType App_ProcessSlaveKeepAlive(uint32_t Tick)
                 {
                     return E_NOT_OK;
                 }
-                App_StartSlaveLed(Tick);
+                App_StartRateLed(Tick);
             }
         }
     }
@@ -379,7 +380,6 @@ static Std_ReturnType App_ProcessSlaveKeepAlive(uint32_t Tick)
             return E_NOT_OK;
         }
     }
-    App_UpdateSlaveLed(Tick);
     return E_OK;
 }
 
@@ -798,6 +798,7 @@ Std_ReturnType App_Init(void)
     }
     if (g_AppRole == APP_ROLE_MASTER)
     {
+        App_StartRateLed(0U);
         if (ADC_StartConversion() != ADC_STATUS_OK)
         {
             g_AppInitError = APP_INIT_ERROR_ADC;
@@ -836,7 +837,7 @@ Std_ReturnType App_MainFunction(uint32_t Tick)
         return E_NOT_OK;
     }
     g_AppMainFunctionCount++;
-    if ((App_ProcessAdc() != E_OK) ||
+    if ((App_ProcessAdc(Tick) != E_OK) ||
         (App_ProcessMasterKeepAlive() != E_OK) ||
         (App_ProcessSlaveKeepAlive(Tick) != E_OK) ||
         (App_ProcessMasterNetworkMonitor(Tick) != E_OK) ||
@@ -844,6 +845,7 @@ Std_ReturnType App_MainFunction(uint32_t Tick)
     {
         return E_NOT_OK;
     }
+    App_UpdateRateLed(Tick);
     App_ProcessMasterImageTx();
     return E_OK;
 }

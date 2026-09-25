@@ -16,7 +16,7 @@ runtime.
 
 | Firmware role | COM Tx | COM Rx | CanTp image behavior | UART |
 | --- | --- | --- | --- | --- |
-| `APP_ROLE_MASTER` | KeepAlive, CAN ID `0x100`, 10 ms COM period | Slave 1/2 status on `0x201`/`0x202` | Reads one PC image, splits it into N-SDUs of at most 62 bytes and transmits them | Image input and slave online/offline reports |
+| `APP_ROLE_MASTER` | KeepAlive, CAN ID `0x100`, 10 ms COM period | Slave 1/2 status on `0x201`/`0x202` | Reads one PC image, splits it into N-SDUs of at most 62 bytes and transmits them | Blue LED mirrors the selected KeepAlive level; UART handles image input and slave online/offline reports |
 | `APP_ROLE_SLAVE1` | Slave 1 status, CAN ID `0x201`, 500 ms | KeepAlive `0x100` | Receives and reassembles image chunks | Exact received image bytes |
 | `APP_ROLE_SLAVE2` | Slave 2 status, CAN ID `0x202`, 500 ms | KeepAlive `0x100` | Data N-PDU reception disabled | No image data |
 

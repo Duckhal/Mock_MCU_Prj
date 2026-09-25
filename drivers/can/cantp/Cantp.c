@@ -19,8 +19,7 @@ volatile uint32_t CanTp_TxAbortCount;
 volatile uint32_t CanTp_RxAbortCount;
 
 /* Append one bounded event for deterministic debugger and host-test evidence. */
-static void CanTp_Log(CanTp_LogEventType Event, PduIdType PduId,
-                      uint32_t State, uint32_t Detail)
+static void CanTp_Log(CanTp_LogEventType Event, PduIdType PduId, uint32_t State, uint32_t Detail)
 {
     uint32_t sequence = CanTp_LogSequence;
     uint32_t index = sequence % CANTP_LOG_CAPACITY;
@@ -41,15 +40,13 @@ static const CanTp_ConnectionConfigType *CanTp_GetConnection(void)
 /* Return non-zero after an unsigned millisecond duration has elapsed. */
 static uint8_t CanTp_HasElapsed(uint32_t StartMs, uint32_t DurationMs)
 {
-    return (uint8_t)(((uint32_t)(CanTp_NowMs - StartMs) >= DurationMs) ?
-                     1U : 0U);
+    return (uint8_t)(((uint32_t)(CanTp_NowMs - StartMs) >= DurationMs) ? 1U : 0U);
 }
 
 /* Return non-zero when a wrap-safe scheduled attempt is due. */
 static uint8_t CanTp_AttemptIsDue(uint32_t DueMs)
 {
-    return (uint8_t)(((uint32_t)(CanTp_NowMs - DueMs) < 0x80000000UL) ?
-                     1U : 0U);
+    return (uint8_t)(((uint32_t)(CanTp_NowMs - DueMs) < 0x80000000UL) ? 1U : 0U);
 }
 
 /* Validate fixed limits and every handle pair in its own ID namespace. */
@@ -124,8 +121,7 @@ static void CanTp_AbortTx(CanTp_AbortReasonType Reason)
     CanTp_TxRuntime.resultReported = 1U;
     CanTp_LastTxAbortReason = Reason;
     CanTp_TxAbortCount++;
-    CanTp_Log(CANTP_LOG_ABORT, config->txNSduId,
-              (uint32_t)CanTp_TxRuntime.state, (uint32_t)Reason);
+    CanTp_Log(CANTP_LOG_ABORT, config->txNSduId, (uint32_t)CanTp_TxRuntime.state, (uint32_t)Reason);
     CanTp_ResetTxSession();
     if (report != 0U)
     {
@@ -139,8 +135,7 @@ static void CanTp_CompleteTx(void)
     const CanTp_ConnectionConfigType *config = CanTp_GetConnection();
     uint8_t report = (uint8_t)(CanTp_TxRuntime.resultReported == 0U);
     CanTp_TxRuntime.resultReported = 1U;
-    CanTp_Log(CANTP_LOG_TX_COMPLETE, config->txNSduId,
-              (uint32_t)CanTp_TxRuntime.state, CanTp_TxRuntime.txOffset);
+    CanTp_Log(CANTP_LOG_TX_COMPLETE, config->txNSduId, (uint32_t)CanTp_TxRuntime.state, CanTp_TxRuntime.txOffset);
     CanTp_ResetTxSession();
     if (report != 0U)
     {
@@ -158,13 +153,11 @@ static void CanTp_AbortRx(CanTp_AbortReasonType Reason)
     {
         return;
     }
-    report = (uint8_t)((CanTp_RxRuntime.queueSlotReserved != 0U) &&
-                       (CanTp_RxRuntime.resultReported == 0U));
+    report = (uint8_t)((CanTp_RxRuntime.queueSlotReserved != 0U) && (CanTp_RxRuntime.resultReported == 0U));
     CanTp_RxRuntime.resultReported = 1U;
     CanTp_LastRxAbortReason = Reason;
     CanTp_RxAbortCount++;
-    CanTp_Log(CANTP_LOG_ABORT, config->rxNSduId,
-              (uint32_t)CanTp_RxRuntime.state, (uint32_t)Reason);
+    CanTp_Log(CANTP_LOG_ABORT, config->rxNSduId, (uint32_t)CanTp_RxRuntime.state, (uint32_t)Reason);
     CanTp_ResetRxSession();
     if (report != 0U)
     {
@@ -177,17 +170,14 @@ static void CanTp_CompleteRx(void)
 {
     const CanTp_ConnectionConfigType *config = CanTp_GetConnection();
     PduLengthType length = CanTp_RxRuntime.totalLength;
-    if (PduR_CanTpCopyRxData(config->rxNSduId,
-                             CanTp_RxRuntime.rxChunkBuffer,
-                             length) != BUFREQ_OK)
+    if (PduR_CanTpCopyRxData(config->rxNSduId, CanTp_RxRuntime.rxChunkBuffer, length) != BUFREQ_OK)
     {
         CanTp_AbortRx(CANTP_ABORT_COPY_FAILURE);
         return;
     }
 
     CanTp_RxRuntime.resultReported = 1U;
-    CanTp_Log(CANTP_LOG_RX_COMPLETE, config->rxNSduId,
-              (uint32_t)CanTp_RxRuntime.state, length);
+    CanTp_Log(CANTP_LOG_RX_COMPLETE, config->rxNSduId, (uint32_t)CanTp_RxRuntime.state, length);
     CanTp_ResetRxSession();
     PduR_CanTpRxIndication(config->rxNSduId, E_OK);
 }
@@ -195,19 +185,15 @@ static void CanTp_CompleteRx(void)
 /* Build one immutable SF, FF or CF and leave its progress uncommitted. */
 static void CanTp_PrepareDataFrame(void)
 {
-    PduLengthType left =
-        (PduLengthType)(CanTp_TxRuntime.totalLength - CanTp_TxRuntime.txOffset);
+    PduLengthType left = (PduLengthType)(CanTp_TxRuntime.totalLength - CanTp_TxRuntime.txOffset);
     uint8_t payloadLength;
 
-    memset(CanTp_TxRuntime.txDataFrame, CANTP_PADDING_BYTE,
-           CANTP_FRAME_LENGTH);
+    memset(CanTp_TxRuntime.txDataFrame, CANTP_PADDING_BYTE, CANTP_FRAME_LENGTH);
     if (CanTp_TxRuntime.totalLength <= CANTP_SF_MAX_LENGTH)
     {
         CanTp_TxRuntime.txDataFrame[0] = CANTP_PCI_SF;
         CanTp_TxRuntime.txDataFrame[1] = CanTp_TxRuntime.totalLength;
-        memcpy(&CanTp_TxRuntime.txDataFrame[2],
-               CanTp_TxRuntime.txChunkBuffer,
-               CanTp_TxRuntime.totalLength);
+        memcpy(&CanTp_TxRuntime.txDataFrame[2], CanTp_TxRuntime.txChunkBuffer, CanTp_TxRuntime.totalLength);
         payloadLength = CanTp_TxRuntime.totalLength;
         CanTp_TxRuntime.preparedFrameType = CANTP_FRAME_SF;
     }
@@ -215,19 +201,14 @@ static void CanTp_PrepareDataFrame(void)
     {
         CanTp_TxRuntime.txDataFrame[0] = CANTP_PCI_FF;
         CanTp_TxRuntime.txDataFrame[1] = CanTp_TxRuntime.totalLength;
-        memcpy(&CanTp_TxRuntime.txDataFrame[2],
-               CanTp_TxRuntime.txChunkBuffer,
-               CANTP_FF_PAYLOAD_LENGTH);
+        memcpy(&CanTp_TxRuntime.txDataFrame[2], CanTp_TxRuntime.txChunkBuffer, CANTP_FF_PAYLOAD_LENGTH);
         payloadLength = CANTP_FF_PAYLOAD_LENGTH;
         CanTp_TxRuntime.preparedFrameType = CANTP_FRAME_FF;
     }
     else
     {
-        payloadLength = (left < CANTP_CF_PAYLOAD_LENGTH) ?
-            left : CANTP_CF_PAYLOAD_LENGTH;
-        CanTp_TxRuntime.txDataFrame[0] =
-            (uint8_t)(CANTP_PCI_CF |
-                      (CanTp_TxRuntime.nextSN & CANTP_PCI_SN_MASK));
+        payloadLength = (left < CANTP_CF_PAYLOAD_LENGTH) ? left : CANTP_CF_PAYLOAD_LENGTH;
+        CanTp_TxRuntime.txDataFrame[0] = (uint8_t)(CANTP_PCI_CF | (CanTp_TxRuntime.nextSN & CANTP_PCI_SN_MASK));
         memcpy(&CanTp_TxRuntime.txDataFrame[1],
                &CanTp_TxRuntime.txChunkBuffer[CanTp_TxRuntime.txOffset],
                payloadLength);
@@ -256,9 +237,7 @@ static void CanTp_RequestPreparedDataFrame(void)
     }
     result = CanIf_Transmit(config->canIfTxDataPduId, &frame);
 
-    CanTp_Log(CANTP_LOG_TX_FRAME_REQUEST, config->txDataNPduId,
-              (uint32_t)CanTp_TxRuntime.state,
-              (uint32_t)CanTp_TxRuntime.preparedFrameType);
+    CanTp_Log(CANTP_LOG_TX_FRAME_REQUEST, config->txDataNPduId, (uint32_t)CanTp_TxRuntime.state, (uint32_t)CanTp_TxRuntime.preparedFrameType);
     if (result == E_OK)
     {
         CanTp_TxRuntime.txPduPending = 1U;
@@ -270,9 +249,7 @@ static void CanTp_RequestPreparedDataFrame(void)
     {
         CanTp_TxRuntime.retryCount++;
         CanTp_TxRuntime.dataAttemptDueMs = CanTp_NowMs + 1U;
-        CanTp_Log(CANTP_LOG_RETRY, config->txDataNPduId,
-                  (uint32_t)CanTp_TxRuntime.state,
-                  CanTp_TxRuntime.retryCount);
+        CanTp_Log(CANTP_LOG_RETRY, config->txDataNPduId, (uint32_t)CanTp_TxRuntime.state, CanTp_TxRuntime.retryCount);
     }
     else
     {
@@ -283,16 +260,13 @@ static void CanTp_RequestPreparedDataFrame(void)
 /* Build one immutable CTS or OVFLW frame without overwriting an FC operation. */
 static Std_ReturnType CanTp_PrepareFlowControl(CanTp_FlowStatusType Status)
 {
-    if ((CanTp_RxRuntime.fcRequestActive != 0U) ||
-        (CanTp_RxRuntime.fcTxPending != 0U))
+    if ((CanTp_RxRuntime.fcRequestActive != 0U) || (CanTp_RxRuntime.fcTxPending != 0U))
     {
         return E_NOT_OK;
     }
 
-    memset(CanTp_RxRuntime.txFcFrame, CANTP_PADDING_BYTE,
-           CANTP_FRAME_LENGTH);
-    CanTp_RxRuntime.txFcFrame[0] =
-        (uint8_t)(CANTP_PCI_FC | (uint8_t)Status);
+    memset(CanTp_RxRuntime.txFcFrame, CANTP_PADDING_BYTE, CANTP_FRAME_LENGTH);
+    CanTp_RxRuntime.txFcFrame[0] = (uint8_t)(CANTP_PCI_FC | (uint8_t)Status);
     if (Status == CANTP_FC_CTS)
     {
         CanTp_RxRuntime.txFcFrame[1] = CANTP_BLOCK_SIZE;
@@ -329,9 +303,7 @@ static void CanTp_RequestPreparedFc(void)
         {
             CanTp_RxRuntime.fcRetryCount++;
             CanTp_RxRuntime.fcAttemptDueMs = CanTp_NowMs + 1U;
-            CanTp_Log(CANTP_LOG_RETRY, config->txFcNPduId,
-                      (uint32_t)CanTp_RxRuntime.state,
-                      CanTp_RxRuntime.fcRetryCount);
+            CanTp_Log(CANTP_LOG_RETRY, config->txFcNPduId, (uint32_t)CanTp_RxRuntime.state, CanTp_RxRuntime.fcRetryCount);
         }
         else
         {
@@ -370,18 +342,15 @@ static void CanTp_HandleDataTxConfirmation(void)
         return;
     }
 
-    CanTp_TxRuntime.txOffset = (PduLengthType)(
-        CanTp_TxRuntime.txOffset + CanTp_TxRuntime.preparedPayloadBytes);
+    CanTp_TxRuntime.txOffset = (PduLengthType)(CanTp_TxRuntime.txOffset + CanTp_TxRuntime.preparedPayloadBytes);
     if (CanTp_TxRuntime.preparedFrameType == CANTP_FRAME_CF)
     {
-        CanTp_TxRuntime.nextSN =
-            (uint8_t)((CanTp_TxRuntime.nextSN + 1U) & CANTP_PCI_SN_MASK);
+        CanTp_TxRuntime.nextSN = (uint8_t)((CanTp_TxRuntime.nextSN + 1U) & CANTP_PCI_SN_MASK);
         CanTp_TxRuntime.blockCount++;
         CanTp_TxRuntime.priorCfExists = 1U;
         CanTp_TxRuntime.lastCfConfirmedMs = CanTp_NowMs;
     }
-    CanTp_Log(CANTP_LOG_TX_FRAME_CONFIRMATION, config->txDataNPduId,
-              (uint32_t)CanTp_TxRuntime.state, CanTp_TxRuntime.txOffset);
+    CanTp_Log(CANTP_LOG_TX_FRAME_CONFIRMATION, config->txDataNPduId, (uint32_t)CanTp_TxRuntime.state, CanTp_TxRuntime.txOffset);
 
     if (CanTp_TxRuntime.txOffset == CanTp_TxRuntime.totalLength)
     {
@@ -411,8 +380,7 @@ static void CanTp_HandleFcTxConfirmation(void)
     CanTp_RxRuntime.fcTxPending = 0U;
     CanTp_RxRuntime.fcRequestActive = 0U;
     CanTp_RxRuntime.nArActive = 0U;
-    if ((CanTp_RxRuntime.state == CANTP_RX_FC_PENDING) &&
-        (CanTp_RxRuntime.queueSlotReserved != 0U))
+    if ((CanTp_RxRuntime.state == CANTP_RX_FC_PENDING) && (CanTp_RxRuntime.queueSlotReserved != 0U))
     {
         CanTp_RxRuntime.blockCount = 0U;
         CanTp_RxRuntime.nCrStartMs = CanTp_NowMs;
@@ -487,8 +455,7 @@ static void CanTp_HandleFirstFrame(const PduInfoType *Frame)
     {
         CanTp_AbortRx(CANTP_ABORT_RX_REPLACED);
     }
-    if (PduR_CanTpStartOfReception(config->rxNSduId,
-                                    totalLength) != BUFREQ_OK)
+    if (PduR_CanTpStartOfReception(config->rxNSduId, totalLength) != BUFREQ_OK)
     {
         (void)CanTp_PrepareFlowControl(CANTP_FC_OVFLW);
         return;
@@ -499,8 +466,7 @@ static void CanTp_HandleFirstFrame(const PduInfoType *Frame)
     CanTp_RxRuntime.receivedLength = CANTP_FF_PAYLOAD_LENGTH;
     CanTp_RxRuntime.expectedSN = 1U;
     CanTp_RxRuntime.queueSlotReserved = 1U;
-    memcpy(CanTp_RxRuntime.rxChunkBuffer, &Frame->SduDataPtr[2],
-           CANTP_FF_PAYLOAD_LENGTH);
+    memcpy(CanTp_RxRuntime.rxChunkBuffer, &Frame->SduDataPtr[2], CANTP_FF_PAYLOAD_LENGTH);
     if (CanTp_PrepareFlowControl(CANTP_FC_CTS) != E_OK)
     {
         CanTp_AbortRx(CANTP_ABORT_COPY_FAILURE);
@@ -527,16 +493,11 @@ static void CanTp_HandleConsecutiveFrame(const PduInfoType *Frame)
 
     CanTp_RxRuntime.nCrActive = 0U;
 
-    remaining = (PduLengthType)(CanTp_RxRuntime.totalLength -
-                                CanTp_RxRuntime.receivedLength);
-    realBytes = (remaining < CANTP_CF_PAYLOAD_LENGTH) ?
-        remaining : CANTP_CF_PAYLOAD_LENGTH;
-    memcpy(&CanTp_RxRuntime.rxChunkBuffer[CanTp_RxRuntime.receivedLength],
-           &Frame->SduDataPtr[1], realBytes);
-    CanTp_RxRuntime.receivedLength =
-        (PduLengthType)(CanTp_RxRuntime.receivedLength + realBytes);
-    CanTp_RxRuntime.expectedSN =
-        (uint8_t)((CanTp_RxRuntime.expectedSN + 1U) & CANTP_PCI_SN_MASK);
+    remaining = (PduLengthType)(CanTp_RxRuntime.totalLength - CanTp_RxRuntime.receivedLength);
+    realBytes = (remaining < CANTP_CF_PAYLOAD_LENGTH) ? remaining : CANTP_CF_PAYLOAD_LENGTH;
+    memcpy(&CanTp_RxRuntime.rxChunkBuffer[CanTp_RxRuntime.receivedLength], &Frame->SduDataPtr[1], realBytes);
+    CanTp_RxRuntime.receivedLength = (PduLengthType)(CanTp_RxRuntime.receivedLength + realBytes);
+    CanTp_RxRuntime.expectedSN = (uint8_t)((CanTp_RxRuntime.expectedSN + 1U) & CANTP_PCI_SN_MASK);
     CanTp_RxRuntime.blockCount++;
 
     if (CanTp_RxRuntime.receivedLength == CanTp_RxRuntime.totalLength)
@@ -560,8 +521,7 @@ static void CanTp_HandleConsecutiveFrame(const PduInfoType *Frame)
 /* Grant a new Tx block only for the configured fixed CTS encoding. */
 static void CanTp_HandleFlowControl(const PduInfoType *Frame)
 {
-    uint8_t flowStatus =
-        (uint8_t)(Frame->SduDataPtr[0] & CANTP_PCI_SN_MASK);
+    uint8_t flowStatus = (uint8_t)(Frame->SduDataPtr[0] & CANTP_PCI_SN_MASK);
     if (CanTp_TxRuntime.state != CANTP_TX_WAIT_FC)
     {
         return;
@@ -658,9 +618,7 @@ Std_ReturnType CanTp_Transmit(PduIdType TxNSduId,
     }
 
     CanTp_PrepareDataFrame();
-    CanTp_Log(CANTP_LOG_TX_ACCEPTED, TxNSduId,
-              (uint32_t)CanTp_TxRuntime.state,
-              CanTp_TxRuntime.totalLength);
+    CanTp_Log(CANTP_LOG_TX_ACCEPTED, TxNSduId, (uint32_t)CanTp_TxRuntime.state, CanTp_TxRuntime.totalLength);
     return E_OK;
 }
 
@@ -678,8 +636,7 @@ void CanTp_RxIndication(PduIdType RxNPduId,
     }
 
     pci = PduInfoPtr->SduDataPtr[0];
-    CanTp_Log(CANTP_LOG_RX_FRAME, RxNPduId,
-              (uint32_t)CanTp_RxRuntime.state, pci);
+    CanTp_Log(CANTP_LOG_RX_FRAME, RxNPduId, (uint32_t)CanTp_RxRuntime.state, pci);
     if (RxNPduId == config->rxDataNPduId)
     {
         if (CanTp_DataRxEnabled == 0U)
@@ -699,8 +656,7 @@ void CanTp_RxIndication(PduIdType RxNPduId,
             CanTp_HandleConsecutiveFrame(PduInfoPtr);
         }
     }
-    else if ((RxNPduId == config->rxFcNPduId) &&
-             ((pci & CANTP_PCI_TYPE_MASK) == CANTP_PCI_FC))
+    else if ((RxNPduId == config->rxFcNPduId) && ((pci & CANTP_PCI_TYPE_MASK) == CANTP_PCI_FC))
     {
         CanTp_HandleFlowControl(PduInfoPtr);
     }
@@ -730,11 +686,9 @@ static void CanTp_CheckTimeouts(void)
     const CanTp_ConnectionConfigType *config = CanTp_GetConnection();
     if ((CanTp_TxRuntime.state == CANTP_TX_WAIT_CONFIRM) &&
         (CanTp_TxRuntime.nAsActive != 0U) &&
-        (CanTp_HasElapsed(CanTp_TxRuntime.nAsStartMs,
-                          CANTP_N_AS_MS) != 0U))
+        (CanTp_HasElapsed(CanTp_TxRuntime.nAsStartMs, CANTP_N_AS_MS) != 0U))
     {
-        CanTp_Log(CANTP_LOG_TIMEOUT, config->txDataNPduId,
-                  (uint32_t)CanTp_TxRuntime.state, CANTP_N_AS_MS);
+        CanTp_Log(CANTP_LOG_TIMEOUT, config->txDataNPduId, (uint32_t)CanTp_TxRuntime.state, CANTP_N_AS_MS);
         CanTp_AbortTx(CANTP_ABORT_N_AS_TIMEOUT);
     }
     else if ((CanTp_TxRuntime.state == CANTP_TX_WAIT_FC) &&
@@ -742,18 +696,15 @@ static void CanTp_CheckTimeouts(void)
              (CanTp_HasElapsed(CanTp_TxRuntime.nBsStartMs,
                                CANTP_N_BS_MS) != 0U))
     {
-        CanTp_Log(CANTP_LOG_TIMEOUT, config->rxFcNPduId,
-                  (uint32_t)CanTp_TxRuntime.state, CANTP_N_BS_MS);
+        CanTp_Log(CANTP_LOG_TIMEOUT, config->rxFcNPduId, (uint32_t)CanTp_TxRuntime.state, CANTP_N_BS_MS);
         CanTp_AbortTx(CANTP_ABORT_N_BS_TIMEOUT);
     }
 
     if ((CanTp_RxRuntime.fcTxPending != 0U) &&
         (CanTp_RxRuntime.nArActive != 0U) &&
-        (CanTp_HasElapsed(CanTp_RxRuntime.nArStartMs,
-                          CANTP_N_AR_MS) != 0U))
+        (CanTp_HasElapsed(CanTp_RxRuntime.nArStartMs, CANTP_N_AR_MS) != 0U))
     {
-        CanTp_Log(CANTP_LOG_TIMEOUT, config->txFcNPduId,
-                  (uint32_t)CanTp_RxRuntime.state, CANTP_N_AR_MS);
+        CanTp_Log(CANTP_LOG_TIMEOUT, config->txFcNPduId, (uint32_t)CanTp_RxRuntime.state, CANTP_N_AR_MS);
         if (CanTp_RxRuntime.queueSlotReserved != 0U)
         {
             CanTp_AbortRx(CANTP_ABORT_N_AR_TIMEOUT);
@@ -768,8 +719,7 @@ static void CanTp_CheckTimeouts(void)
              (CanTp_HasElapsed(CanTp_RxRuntime.nCrStartMs,
                                CANTP_N_CR_MS) != 0U))
     {
-        CanTp_Log(CANTP_LOG_TIMEOUT, config->rxDataNPduId,
-                  (uint32_t)CanTp_RxRuntime.state, CANTP_N_CR_MS);
+        CanTp_Log(CANTP_LOG_TIMEOUT, config->rxDataNPduId, (uint32_t)CanTp_RxRuntime.state, CANTP_N_CR_MS);
         CanTp_AbortRx(CANTP_ABORT_N_CR_TIMEOUT);
     }
 }

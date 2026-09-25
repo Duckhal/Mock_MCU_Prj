@@ -41,7 +41,7 @@ CanTp FC N-PDU           -> CanIf 4          -> CAN 0x658
 | Area | Main files | Use |
 | --- | --- | --- |
 | CAN board setup | `bsp/can/board_can.c/h` | Clock, pins, watchdog and transceiver setup |
-| LEDs | `bsp/LED.c/h` | Slave blue-LED liveness indication |
+| LEDs | `bsp/LED.c/h` | Master and Slave blue-LED KeepAlive-rate indication |
 | ADC | `drivers/adc/Driver_ADC.c/h` | Master potentiometer on ADC0_SE12 |
 | UART | `drivers/uart/Driver_UART.c/h` | Master image input/status text and Slave1 image output |
 | Byte queues | `middlewares/ring_buffer.c/h` | Interrupt-safe bounded UART Rx/Tx storage |
@@ -52,8 +52,8 @@ CanTp FC N-PDU           -> CanIf 4          -> CAN 0x658
 KeepAlive and status:
 
 ```text
-Master ADC -> rate level -> AliveCounter update -> COM 0x100
-  -> both Slaves -> new-counter filter -> LED + MASTER_LOST timer
+Master ADC -> rate level -> Master LED + AliveCounter update -> COM 0x100
+  -> both Slaves -> new-counter filter -> matching LED period + MASTER_LOST timer
   -> Slave status COM 0x201/0x202 -> Master online/offline monitor -> UART
 ```
 

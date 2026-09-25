@@ -32,8 +32,7 @@ Std_ReturnType PduR_Init(void)
 }
 
 /* Snapshot one valid lower-layer Rx callback for debugger inspection. */
-static void PduR_SnapshotRx(PduIdType RxPduId,
-                            const PduInfoType *PduInfoPtr)
+static void PduR_SnapshotRx(PduIdType RxPduId, const PduInfoType *PduInfoPtr)
 {
     uint8_t b;
     PduR_LastRxPduId = RxPduId;
@@ -46,8 +45,7 @@ static void PduR_SnapshotRx(PduIdType RxPduId,
 }
 
 /* Route one COM Tx I-PDU to its configured CanIf Tx L-PDU. */
-Std_ReturnType PduR_ComTransmit(PduIdType ComTxPduId,
-                               const PduInfoType *PduInfoPtr)
+Std_ReturnType PduR_ComTransmit(PduIdType ComTxPduId, const PduInfoType *PduInfoPtr)
 {
     uint16_t index;
 
@@ -68,8 +66,7 @@ Std_ReturnType PduR_ComTransmit(PduIdType ComTxPduId,
 }
 
 /* Route one application global PDU to the configured CanTp Tx N-SDU. */
-Std_ReturnType PduR_Transmit(GlobalPduIdType GlobalPduId,
-                            const PduInfoType *PduInfoPtr)
+Std_ReturnType PduR_Transmit(GlobalPduIdType GlobalPduId, const PduInfoType *PduInfoPtr)
 {
     uint16_t index;
     if ((PduInfoPtr == NULL) || (PduInfoPtr->SduDataPtr == NULL) ||
@@ -82,24 +79,21 @@ Std_ReturnType PduR_Transmit(GlobalPduIdType GlobalPduId,
     {
         if (PduR_CanTpTxRouteConfig[index].globalPduId == GlobalPduId)
         {
-            return CanTp_Transmit(PduR_CanTpTxRouteConfig[index].txNSduId,
-                                  PduInfoPtr);
+            return CanTp_Transmit(PduR_CanTpTxRouteConfig[index].txNSduId, PduInfoPtr);
         }
     }
     return E_NOT_OK;
 }
 
 /* Ask the routed application source for the accepted Tx N-SDU snapshot. */
-BufReq_ReturnType PduR_CanTpCopyTxData(PduIdType TxNSduId, uint8_t *DestPtr,
-                                       PduLengthType Length)
+BufReq_ReturnType PduR_CanTpCopyTxData(PduIdType TxNSduId, uint8_t *DestPtr, PduLengthType Length)
 {
     uint16_t index;
     for (index = 0U; index < PDUR_NUM_CANTP_TX_ROUTES; index++)
     {
         if (PduR_CanTpTxRouteConfig[index].txNSduId == TxNSduId)
         {
-            return NodeApp_CanTpCopyTxData(
-                PduR_CanTpTxRouteConfig[index].globalPduId, DestPtr, Length);
+            return NodeApp_CanTpCopyTxData(PduR_CanTpTxRouteConfig[index].globalPduId, DestPtr, Length);
         }
     }
     return BUFREQ_E_NOT_OK;
@@ -113,41 +107,35 @@ void PduR_CanTpTxConfirmation(PduIdType TxNSduId, Std_ReturnType Result)
     {
         if (PduR_CanTpTxRouteConfig[index].txNSduId == TxNSduId)
         {
-            NodeApp_CanTpTxConfirmation(
-                PduR_CanTpTxRouteConfig[index].globalPduId, Result);
+            NodeApp_CanTpTxConfirmation(PduR_CanTpTxRouteConfig[index].globalPduId, Result);
             return;
         }
     }
 }
 
 /* Reserve one queue slot for a routed CanTp Rx N-SDU. */
-BufReq_ReturnType PduR_CanTpStartOfReception(PduIdType RxNSduId,
-                                             PduLengthType TotalLength)
+BufReq_ReturnType PduR_CanTpStartOfReception(PduIdType RxNSduId, PduLengthType TotalLength)
 {
     uint16_t index;
     for (index = 0U; index < PDUR_NUM_CANTP_RX_ROUTES; index++)
     {
         if (PduR_CanTpRxRouteConfig[index].rxNSduId == RxNSduId)
         {
-            return NodeApp_CanTpStartOfReception(
-                PduR_CanTpRxRouteConfig[index].globalPduId, TotalLength);
+            return NodeApp_CanTpStartOfReception(PduR_CanTpRxRouteConfig[index].globalPduId, TotalLength);
         }
     }
     return BUFREQ_E_NOT_OK;
 }
 
 /* Copy one complete reassembled N-SDU into its reserved application slot. */
-BufReq_ReturnType PduR_CanTpCopyRxData(PduIdType RxNSduId,
-                                       const uint8_t *DataPtr,
-                                       PduLengthType Length)
+BufReq_ReturnType PduR_CanTpCopyRxData(PduIdType RxNSduId, const uint8_t *DataPtr, PduLengthType Length)
 {
     uint16_t index;
     for (index = 0U; index < PDUR_NUM_CANTP_RX_ROUTES; index++)
     {
         if (PduR_CanTpRxRouteConfig[index].rxNSduId == RxNSduId)
         {
-            return NodeApp_CanTpCopyRxData(
-                PduR_CanTpRxRouteConfig[index].globalPduId, DataPtr, Length);
+            return NodeApp_CanTpCopyRxData(PduR_CanTpRxRouteConfig[index].globalPduId, DataPtr, Length);
         }
     }
     return BUFREQ_E_NOT_OK;
@@ -161,8 +149,7 @@ void PduR_CanTpRxIndication(PduIdType RxNSduId, Std_ReturnType Result)
     {
         if (PduR_CanTpRxRouteConfig[index].rxNSduId == RxNSduId)
         {
-            NodeApp_CanTpRxIndication(
-                PduR_CanTpRxRouteConfig[index].globalPduId, Result);
+            NodeApp_CanTpRxIndication(PduR_CanTpRxRouteConfig[index].globalPduId, Result);
             return;
         }
     }
@@ -194,8 +181,7 @@ void PduR_CanIfRxIndication(PduIdType RxPduId, const PduInfoType *PduInfoPtr)
         if ((RxPduId == config->canIfRxDataPduId) ||
             (RxPduId == config->canIfRxFcPduId))
         {
-            PduIdType rxNPduId = (RxPduId == config->canIfRxDataPduId) ?
-                config->rxDataNPduId : config->rxFcNPduId;
+            PduIdType rxNPduId = (RxPduId == config->canIfRxDataPduId) ? config->rxDataNPduId : config->rxFcNPduId;
             if (PduInfoPtr->SduLength != CANTP_FRAME_LENGTH)
             {
                 return;
@@ -224,13 +210,11 @@ void PduR_CanIfTxConfirmation(PduIdType TxPduId)
     }
     for (connection = 0U; connection < CANTP_NUM_CONNECTIONS; connection++)
     {
-        const CanTp_ConnectionConfigType *config =
-            &CanTp_ConnectionConfig[connection];
+        const CanTp_ConnectionConfigType *config = &CanTp_ConnectionConfig[connection];
         if ((TxPduId == config->canIfTxDataPduId) ||
             (TxPduId == config->canIfTxFcPduId))
         {
-            PduIdType txNPduId = (TxPduId == config->canIfTxDataPduId) ?
-                config->txDataNPduId : config->txFcNPduId;
+            PduIdType txNPduId = (TxPduId == config->canIfTxDataPduId) ? config->txDataNPduId : config->txFcNPduId;
             PduR_LastTxPduId = TxPduId;
             PduR_TxConfirmationCount++;
             CanTp_TxConfirmation(txNPduId);

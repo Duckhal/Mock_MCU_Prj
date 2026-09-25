@@ -48,8 +48,7 @@ const Com_SignalConfigType Com_SignalConfig[COM_NUM_SIGNALS] =
       0U, 8U, 0U }
 };
 
-const Com_SignalGroupConfigType
-Com_SignalGroupConfig[COM_NUM_SIGNAL_GROUPS] =
+const Com_SignalGroupConfigType Com_SignalGroupConfig[COM_NUM_SIGNAL_GROUPS] =
 {
     { COM_SIGNAL_GROUP_TX_KEEPALIVE, KeepAliveTxSignals, 2U },
     { COM_SIGNAL_GROUP_RX_KEEPALIVE, KeepAliveRxSignals, 2U },

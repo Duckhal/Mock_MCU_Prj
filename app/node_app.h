@@ -19,31 +19,24 @@ extern volatile Std_ReturnType NodeApp_LastTxResult;
 extern volatile uint32_t NodeApp_RxIndicationCount;
 extern volatile Std_ReturnType NodeApp_LastRxResult;
 
-/** Reset the application Tx source and the two-slot Rx queue. */
+/* Reset the application Tx source and the two-slot Rx queue. */
 Std_ReturnType NodeApp_Init(void);
 
-/** Copy and submit one application N-SDU through PduR and CanTp. */
+/* Copy and submit one application N-SDU through PduR and CanTp. */
 Std_ReturnType NodeApp_Transmit(const uint8_t *DataPtr, PduLengthType Length);
 
-/** Copy and consume the oldest READY Rx message. */
+/* Copy and consume the oldest READY Rx message. */
 Std_ReturnType NodeApp_Receive(uint8_t *DataPtr, PduLengthType Capacity,
                                PduLengthType *LengthPtr);
 
-/** Return the number of complete N-SDUs waiting in the Rx queue. */
+/* Return the number of complete N-SDUs waiting in the Rx queue. */
 uint8_t NodeApp_GetReadyCount(void);
 
 /* PduR-facing application callbacks used by the mock CanTp route. */
-BufReq_ReturnType NodeApp_CanTpCopyTxData(GlobalPduIdType GlobalPduId,
-                                          uint8_t *DestPtr,
-                                          PduLengthType Length);
-void NodeApp_CanTpTxConfirmation(GlobalPduIdType GlobalPduId,
-                                 Std_ReturnType Result);
-BufReq_ReturnType NodeApp_CanTpStartOfReception(GlobalPduIdType GlobalPduId,
-                                                PduLengthType TotalLength);
-BufReq_ReturnType NodeApp_CanTpCopyRxData(GlobalPduIdType GlobalPduId,
-                                          const uint8_t *DataPtr,
-                                          PduLengthType Length);
-void NodeApp_CanTpRxIndication(GlobalPduIdType GlobalPduId,
-                               Std_ReturnType Result);
+BufReq_ReturnType NodeApp_CanTpCopyTxData(GlobalPduIdType GlobalPduId, uint8_t *DestPtr, PduLengthType Length);
+void NodeApp_CanTpTxConfirmation(GlobalPduIdType GlobalPduId, Std_ReturnType Result);
+BufReq_ReturnType NodeApp_CanTpStartOfReception(GlobalPduIdType GlobalPduId, PduLengthType TotalLength);
+BufReq_ReturnType NodeApp_CanTpCopyRxData(GlobalPduIdType GlobalPduId, const uint8_t *DataPtr, PduLengthType Length);
+void NodeApp_CanTpRxIndication(GlobalPduIdType GlobalPduId, Std_ReturnType Result);
 
 #endif /* NODE_APP_H_ */

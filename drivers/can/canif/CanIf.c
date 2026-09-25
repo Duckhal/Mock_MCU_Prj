@@ -56,8 +56,7 @@ static volatile CanIf_LogRecordType CanIf_LogRecords[CANIF_LOG_CAPACITY];
 static volatile uint32_t CanIf_LogSequence = 0U;
 
 /* Append an event; detail contains a validation reason or driver return value. */
-static void CanIf_Log(CanIf_LogEventType event, PduIdType pduId,
-                      Can_IdType canId, Can_HwHandleType hoh, uint32_t detail)
+static void CanIf_Log(CanIf_LogEventType event, PduIdType pduId, Can_IdType canId, Can_HwHandleType hoh, uint32_t detail)
 {
     uint32_t sequence = CanIf_LogSequence;
     uint32_t index = sequence % CANIF_LOG_CAPACITY;
@@ -72,8 +71,7 @@ static void CanIf_Log(CanIf_LogEventType event, PduIdType pduId,
 }
 
 /* Resolve one unique HOH of the expected type with one existing controller. */
-static const Can_HardwareObjectConfigType *CanIf_GetHardwareObject(
-    Can_HwHandleType handle, Can_ObjectType expectedType)
+static const Can_HardwareObjectConfigType *CanIf_GetHardwareObject(Can_HwHandleType handle, Can_ObjectType expectedType)
 {
     const Can_HardwareObjectConfigType *object = NULL;
     size_t index;
@@ -120,8 +118,7 @@ static const CanIf_TxPduConfigType *CanIf_GetTxPdu(PduIdType txPduId)
 }
 
 /* Resolve the BasicCAN receive key HRH plus CAN ID to one local Rx PDU. */
-static const CanIf_RxPduConfigType *CanIf_GetRxPdu(
-    Can_HwHandleType hrh, Can_IdType canId)
+static const CanIf_RxPduConfigType *CanIf_GetRxPdu(Can_HwHandleType hrh, Can_IdType canId)
 {
     size_t index;
     for (index = 0U; index < CANIF_NUM_RX_PDUS; index++)

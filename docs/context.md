@@ -38,9 +38,10 @@ The application does not read SW2/SW3 and cannot change role at runtime.
 `g_AppRole` is the debugger-visible role.
 
 - Master samples ADC0_SE12, maps 0..4095 evenly to KeepAlive levels 0..6,
-  increments `AliveCounter` at 500/200/100/50/20/10/5 ms, and monitors both
-  Slave Status I-PDUs. UART accepts `[uint16 length LE][raw ASCII bytes]` and
-  sends image chunks of at most 62 bytes through CanTp.
+  blinks its blue LED with the selected level's visible period, increments
+  `AliveCounter` at 500/200/100/50/20/10/5 ms, and monitors both Slave Status
+  I-PDUs. UART accepts `[uint16 length LE][raw ASCII bytes]` and sends image
+  chunks of at most 62 bytes through CanTp.
 - Slave 1 receives KeepAlive, blinks the blue LED at the level's visible
   period, reports its status, receives CanTp image chunks, and writes exact
   image bytes to UART.
@@ -102,9 +103,9 @@ implemented because the assignment excludes them.
 The following checks pass on 2026-09-24:
 
 - `tests/board_demo/run_tests.ps1`: Master, Slave1 and Slave2 profiles; ADC
-  boundaries; KeepAlive timing; AliveCounter filtering; LED timing; status;
-  `62/62/6` image chunking; three retries; scheduler ordering; strict ARM
-  compile.
+  boundaries; KeepAlive timing; AliveCounter filtering; matching Master/Slave
+  LED timing; status; `62/62/6` image chunking; three retries; scheduler
+  ordering; strict ARM compile.
 - `tests/cantp/run_tests.ps1`: Phase 1-3 T01-T14 implemented cases, routing,
   and strict ARM compilation.
 - `tests/canif/run_tests.ps1`: CanIf unit and production mapping tests.

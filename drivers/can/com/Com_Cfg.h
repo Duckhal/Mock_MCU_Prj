@@ -40,8 +40,7 @@
 #define COM_SLAVE_STATUS_TX_PERIOD_TICKS   (500U)
 
 extern const Com_SignalConfigType Com_SignalConfig[COM_NUM_SIGNALS];
-extern const Com_SignalGroupConfigType
-    Com_SignalGroupConfig[COM_NUM_SIGNAL_GROUPS];
+extern const Com_SignalGroupConfigType Com_SignalGroupConfig[COM_NUM_SIGNAL_GROUPS];
 extern const Com_IPduConfigType Com_IPduConfig[COM_NUM_IPDUS];
 
 #endif /* COM_CFG_H_ */

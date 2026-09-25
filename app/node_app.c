@@ -21,7 +21,7 @@ volatile Std_ReturnType NodeApp_LastTxResult;
 volatile uint32_t NodeApp_RxIndicationCount;
 volatile Std_ReturnType NodeApp_LastRxResult;
 
-/** Reset all application-owned transport buffers and observable results. */
+/* Reset all application-owned transport buffers and observable results. */
 Std_ReturnType NodeApp_Init(void)
 {
     memset(NodeApp_TxSource, 0, sizeof(NodeApp_TxSource));
@@ -41,7 +41,7 @@ Std_ReturnType NodeApp_Init(void)
     return E_OK;
 }
 
-/** Own a stable application Tx source before asking PduR to route it. */
+/* Own a stable application Tx source before asking PduR to route it. */
 Std_ReturnType NodeApp_Transmit(const uint8_t *DataPtr, PduLengthType Length)
 {
     PduInfoType request;
@@ -65,7 +65,7 @@ Std_ReturnType NodeApp_Transmit(const uint8_t *DataPtr, PduLengthType Length)
     return E_OK;
 }
 
-/** Consume one complete queue entry without exposing internal slot storage. */
+/* Consume one complete queue entry without exposing internal slot storage. */
 Std_ReturnType NodeApp_Receive(uint8_t *DataPtr, PduLengthType Capacity,
                                PduLengthType *LengthPtr)
 {
@@ -91,7 +91,7 @@ Std_ReturnType NodeApp_Receive(uint8_t *DataPtr, PduLengthType Capacity,
     return E_NOT_OK;
 }
 
-/** Count complete messages; RESERVED partial data is deliberately invisible. */
+/* Count complete messages; RESERVED partial data is deliberately invisible. */
 uint8_t NodeApp_GetReadyCount(void)
 {
     uint8_t index;
@@ -106,7 +106,7 @@ uint8_t NodeApp_GetReadyCount(void)
     return count;
 }
 
-/** Copy the stable application Tx source into CanTp exactly once. */
+/* Copy the stable application Tx source into CanTp exactly once. */
 BufReq_ReturnType NodeApp_CanTpCopyTxData(GlobalPduIdType GlobalPduId,
                                           uint8_t *DestPtr,
                                           PduLengthType Length)
@@ -120,7 +120,7 @@ BufReq_ReturnType NodeApp_CanTpCopyTxData(GlobalPduIdType GlobalPduId,
     return BUFREQ_OK;
 }
 
-/** Release the application Tx source after the one final CanTp result. */
+/* Release the application Tx source after the one final CanTp result. */
 void NodeApp_CanTpTxConfirmation(GlobalPduIdType GlobalPduId,
                                  Std_ReturnType Result)
 {
@@ -136,7 +136,7 @@ void NodeApp_CanTpTxConfirmation(GlobalPduIdType GlobalPduId,
     }
 }
 
-/** Reserve one FREE queue slot without exposing partial data as READY. */
+/* Reserve one FREE queue slot without exposing partial data as READY. */
 BufReq_ReturnType NodeApp_CanTpStartOfReception(GlobalPduIdType GlobalPduId,
                                                 PduLengthType TotalLength)
 {
@@ -158,7 +158,7 @@ BufReq_ReturnType NodeApp_CanTpStartOfReception(GlobalPduIdType GlobalPduId,
     return BUFREQ_E_OVFL;
 }
 
-/** Publish a queue slot only after the complete N-SDU has been copied. */
+/* Publish a queue slot only after the complete N-SDU has been copied. */
 BufReq_ReturnType NodeApp_CanTpCopyRxData(GlobalPduIdType GlobalPduId,
                                           const uint8_t *DataPtr,
                                           PduLengthType Length)
@@ -176,7 +176,7 @@ BufReq_ReturnType NodeApp_CanTpCopyRxData(GlobalPduIdType GlobalPduId,
     return BUFREQ_OK;
 }
 
-/** Finalize a receive session and release its reservation on failure. */
+/* Finalize a receive session and release its reservation on failure. */
 void NodeApp_CanTpRxIndication(GlobalPduIdType GlobalPduId,
                                Std_ReturnType Result)
 {

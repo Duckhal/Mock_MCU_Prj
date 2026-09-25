@@ -55,7 +55,6 @@
 #define CANTP_DATA_CAN_ID              (0x650U)
 #define CANTP_FC_CAN_ID                (0x658U)
 
-extern const CanTp_ConnectionConfigType
-    CanTp_ConnectionConfig[CANTP_NUM_CONNECTIONS];
+extern const CanTp_ConnectionConfigType CanTp_ConnectionConfig[CANTP_NUM_CONNECTIONS];
 
 #endif /* CANTP_CFG_H_ */

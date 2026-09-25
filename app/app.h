@@ -12,7 +12,7 @@
 
 /* Select one fixed role for the firmware image being built. */
 #ifndef APP_BOARD_ROLE
-#define APP_BOARD_ROLE APP_ROLE_MASTER
+#define APP_BOARD_ROLE APP_ROLE_SLAVE1
 #endif
 #if ((APP_BOARD_ROLE != APP_ROLE_MASTER) && \
      (APP_BOARD_ROLE != APP_ROLE_SLAVE1) && \
@@ -95,23 +95,22 @@ extern volatile uint32_t g_AppStateErrorMask;
 extern volatile PduLengthType g_AppLastCanTpRxLength;
 extern uint8_t g_AppLastCanTpRxData[APP_MAX_LARGE_MESSAGE_LENGTH];
 
-/** Initialize peripherals owned by the application. */
+/* Initialize peripherals owned by the application. */
 Std_ReturnType App_HardwareInit(void);
 
-/** Initialize the selected compile-time ECU role and application state. */
+/* Initialize the selected compile-time ECU role and application state. */
 Std_ReturnType App_Init(void);
 
-/** Execute all role-specific application work for one 1 ms tick. */
+/* Execute all role-specific application work for one 1 ms tick. */
 Std_ReturnType App_MainFunction(uint32_t Tick);
 
-/** Return non-zero after initialization because every role owns one COM Tx I-PDU. */
+/* Return non-zero after initialization because every role owns one COM Tx I-PDU. */
 uint8_t App_IsComTxEnabled(void);
 
-/** Enable the optional single-board Master UART/CanTp loopback fixture. */
+/* Enable the optional single-board Master UART/CanTp loopback fixture. */
 Std_ReturnType App_SetCanTpLoopbackMode(uint8_t Enabled);
 
-/** Submit one Master-owned N-SDU while preserving its source until completion. */
-Std_ReturnType App_SendLargeMessage(const uint8_t *DataPtr,
-                                    PduLengthType Length);
+/* Submit one Master-owned N-SDU while preserving its source until completion. */
+Std_ReturnType App_SendLargeMessage(const uint8_t *DataPtr, PduLengthType Length);
 
 #endif /* APP_H_ */
