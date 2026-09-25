@@ -152,11 +152,17 @@ Global PDU ID.
 Every COM I-PDU has DLC 8:
 
 ```text
-KeepAlive:      [AliveCounter][RateLevel][00][00][00][00][00][00]
-Slave 1 Status: [Status][00][00][00][00][00][00][00]
-Slave 2 Status: [Status][00][00][00][00][00][00][00]
+KeepAlive:      [(AliveCounter << 1) | U][(RateLevel << 1) | U][00][00][00][00][00][00]
+Slave 1 Status: [(Status << 1) | U][00][00][00][00][00][00][00]
+Slave 2 Status: [(Status << 1) | U][00][00][00][00][00][00][00]
 ```
 
+- Bit 0 of each occupied Signal Slot is its Update Bit (`U`); bits 1..7 hold
+  the Signal payload. `Com_SendSignal()` sets `U = 1`, and COM clears it only
+  after the lower layer accepts the I-PDU. A later periodic frame can carry
+  the same payload with `U = 0`.
+- `AliveCounter` retains the application type `uint8`, but its valid range is
+  `0..127` and it wraps from 127 to 0.
 - `RateLevel` is in the range `0..6`.
 - `Status = 0` means `NORMAL`.
 - `Status = 1` means `MASTER_LOST`.

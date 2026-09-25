@@ -24,10 +24,15 @@ All roles use CAN0 at 500 kbit/s with standard 11-bit identifiers and DLC 8.
 The KeepAlive payload is:
 
 ```text
-byte 0: AliveCounter
-byte 1: KeepAliveRateLevel (0..6)
+byte 0: (AliveCounter << 1) | UpdateBit; AliveCounter wraps at 127
+byte 1: (KeepAliveRateLevel << 1) | UpdateBit; level is 0..6
 byte 2..7: zero
 ```
+
+Each occupied Signal Slot uses bit 0 as its Update Bit. The same encoding
+applies to Slave Status at byte 0 of CAN IDs `0x201` and `0x202`. COM sets an
+Update Bit when its Signal is written and clears the buffered bit after the
+lower layer accepts a transmission. A later periodic frame may carry `U = 0`.
 
 On the Master, ADC0_SE12 maps the complete 12-bit range evenly to seven rate
 levels. The application updates `AliveCounter` at 500, 200, 100, 50, 20, 10,
@@ -47,7 +52,8 @@ a failed chunk up to three times, drops only that chunk after retry exhaustion,
 and continues the current image. The CanTp Data/FC CAN IDs remain `0x650` and
 `0x658`, with BS 4 and STmin 5 ms.
 
-`src/main.c` initializes the stack and runs this 1 ms order:
+`src/main.c` calls `System_Init()` and repeatedly calls `System_RunTask()`;
+`system/System.c` owns this 1 ms order:
 
 ```text
 Can_MainFunction_Write

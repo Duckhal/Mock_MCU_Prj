@@ -288,7 +288,14 @@ static Std_ReturnType App_ProcessMasterKeepAlive(void)
     {
         return E_OK;
     }
-    g_AppAliveCounter++;
+    if (g_AppAliveCounter >= COM_ALIVE_COUNTER_MAX_VALUE)
+    {
+        g_AppAliveCounter = 0U;
+    }
+    else
+    {
+        g_AppAliveCounter++;
+    }
     value = g_AppAliveCounter;
     if (Com_SendSignal(COM_SIGNAL_TX_ALIVE_COUNTER, &value) != E_OK)
     {
@@ -341,7 +348,8 @@ static Std_ReturnType App_ProcessSlaveKeepAlive(uint32_t Tick)
             g_AppRuntimeStatus = APP_RUNTIME_COM_RECEIVE_ERROR;
             return E_NOT_OK;
         }
-        if ((alive > UINT8_MAX) || (level >= APP_KEEPALIVE_LEVEL_COUNT))
+        if ((alive > COM_ALIVE_COUNTER_MAX_VALUE) ||
+            (level >= APP_KEEPALIVE_LEVEL_COUNT))
         {
             g_AppRuntimeStatus = APP_RUNTIME_COM_RECEIVE_ERROR;
             return E_NOT_OK;

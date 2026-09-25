@@ -16,7 +16,7 @@ Std_ReturnType PduR_ComTransmit(PduIdType Id, const PduInfoType *InfoPtr)
 /** Verify KeepAlive Rx values and per-I-PDU event counting. */
 int main(void)
 {
-    uint8_t frame[8] = {0x5AU, 4U, 0U, 0U, 0U, 0U, 0U, 0U};
+    uint8_t frame[8] = {0xB5U, 0x09U, 0U, 0U, 0U, 0U, 0U, 0U};
     PduInfoType info = {frame, sizeof(frame)};
     uint32_t alive = 0U;
     uint32_t level = 0U;
@@ -27,9 +27,19 @@ int main(void)
     assert(Com_ReceiveSignal(COM_SIGNAL_RX_KEEPALIVE_RATE, &level) == E_OK);
     assert(alive == 0x5AU && level == 4U);
     assert(Com_GetRxIPduIndicationCount(COM_IPDU_RX_KEEPALIVE) == 1U);
+    assert(Com_GetRxSignalUpdateCount(COM_SIGNAL_RX_ALIVE_COUNTER) == 1U);
+    assert(Com_GetRxSignalUpdateCount(COM_SIGNAL_RX_KEEPALIVE_RATE) == 1U);
+    frame[0] = 0xB4U;
+    frame[1] = 0x08U;
+    Com_RxIndication(COM_IPDU_RX_KEEPALIVE, &info);
+    assert(Com_GetRxIPduIndicationCount(COM_IPDU_RX_KEEPALIVE) == 2U);
+    assert(Com_GetRxSignalUpdateCount(COM_SIGNAL_RX_ALIVE_COUNTER) == 1U);
+    assert(Com_GetRxSignalUpdateCount(COM_SIGNAL_RX_KEEPALIVE_RATE) == 1U);
+    assert(Com_ReceiveSignal(COM_SIGNAL_RX_ALIVE_COUNTER, &alive) == E_OK);
+    assert(alive == 0x5AU);
     info.SduLength = 7U;
     Com_RxIndication(COM_IPDU_RX_KEEPALIVE, &info);
-    assert(Com_GetRxIPduIndicationCount(COM_IPDU_RX_KEEPALIVE) == 1U);
-    puts("PASS: COM KeepAlive Rx decodes values and rejects a short frame.");
+    assert(Com_GetRxIPduIndicationCount(COM_IPDU_RX_KEEPALIVE) == 2U);
+    puts("PASS: COM KeepAlive Rx decodes slots, counts updates, and rejects short frames.");
     return 0;
 }

@@ -63,6 +63,20 @@ int main(void)
     assert(App_MainFunction(201U) == E_OK);
     assert(Test_LedState[0] == 1U);
 
-    puts("PASS: MASTER maps ADC levels, emits KeepAlive, and mirrors LED timing.");
+    assert(App_Init() == E_OK);
+    g_AppAliveCounter = COM_ALIVE_COUNTER_MAX_VALUE;
+    for (index = 1U; index <= 5U; index++)
+    {
+        assert(App_MainFunction(index) == E_OK);
+    }
+    assert(g_AppAliveCounter == 0U);
+    assert(Test_ComSignalValue[COM_SIGNAL_TX_ALIVE_COUNTER] == 0U);
+    for (index = 6U; index <= 10U; index++)
+    {
+        assert(App_MainFunction(index) == E_OK);
+    }
+    assert(g_AppAliveCounter == 1U);
+
+    puts("PASS: MASTER maps ADC levels, wraps AliveCounter at 127, and mirrors LED timing.");
     return 0;
 }

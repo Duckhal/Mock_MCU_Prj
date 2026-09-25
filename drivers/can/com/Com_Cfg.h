@@ -15,6 +15,8 @@
 #define COM_SIGNAL_RX_SLAVE2_STATUS        ((PduIdType)7U)
 
 #define COM_KEEPALIVE_RATE_LEVEL_MAX       (6U)
+/* An eight-bit slot leaves seven payload bits after its Update Bit. */
+#define COM_ALIVE_COUNTER_MAX_VALUE        (127U)
 #define COM_SLAVE_STATUS_NORMAL            (0U)
 #define COM_SLAVE_STATUS_MASTER_LOST       (1U)
 

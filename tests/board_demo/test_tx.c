@@ -19,24 +19,32 @@ Std_ReturnType PduR_ComTransmit(PduIdType Id, const PduInfoType *InfoPtr)
 #include "../../drivers/can/com/Com.c"
 #include "../../drivers/can/com/Com_Cfg.c"
 
-/** Verify COM transmits `[AliveCounter][RateLevel][zero...]` with DLC 8. */
+/** Verify both KeepAlive slots carry Update Bits and clear them after Tx. */
 int main(void)
 {
-    uint32_t alive = 0xA5U;
+    uint32_t alive = COM_ALIVE_COUNTER_MAX_VALUE;
+    uint32_t invalid = COM_ALIVE_COUNTER_MAX_VALUE + 1U;
     uint32_t level = 6U;
     uint8_t index;
 
     assert(Com_Init() == E_OK);
     assert(Com_SetTxIPduEnabled(COM_IPDU_TX_KEEPALIVE, 1U) == E_OK);
     assert(Com_SendSignal(COM_SIGNAL_TX_ALIVE_COUNTER, &alive) == E_OK);
+    assert(Com_SendSignal(COM_SIGNAL_TX_ALIVE_COUNTER, &invalid) == E_NOT_OK);
     assert(Com_SendSignal(COM_SIGNAL_TX_KEEPALIVE_RATE, &level) == E_OK);
     Com_MainFunctionTx();
     assert(Test_FrameCount == 1U);
-    assert(Test_Frame[0] == alive && Test_Frame[1] == level);
+    assert(Test_Frame[0] == 0xFFU && Test_Frame[1] == 0x0DU);
     for (index = 2U; index < sizeof(Test_Frame); index++)
     {
         assert(Test_Frame[index] == 0U);
     }
-    puts("PASS: COM KeepAlive Tx frame has the required DLC8 layout.");
+    for (index = 0U; index < COM_KEEPALIVE_TX_PERIOD_TICKS; index++)
+    {
+        Com_MainFunctionTx();
+    }
+    assert(Test_FrameCount == 2U);
+    assert(Test_Frame[0] == 0xFEU && Test_Frame[1] == 0x0CU);
+    puts("PASS: COM KeepAlive uses two 7-bit payloads and per-slot Update Bits.");
     return 0;
 }

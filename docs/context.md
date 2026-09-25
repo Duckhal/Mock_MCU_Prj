@@ -56,13 +56,18 @@ The application does not read SW2/SW3 and cannot change role at runtime.
 
 | Purpose | Standard CAN ID | DLC | Producer |
 | --- | ---: | ---: | --- |
-| KeepAlive `[AliveCounter][RateLevel][00..]` | `0x100` | 8 | Master |
-| Slave 1 Status `[status][00..]` | `0x201` | 8 | Slave 1 |
-| Slave 2 Status `[status][00..]` | `0x202` | 8 | Slave 2 |
+| KeepAlive `[AliveCounter slot][RateLevel slot][00..]` | `0x100` | 8 | Master |
+| Slave 1 Status `[status slot][00..]` | `0x201` | 8 | Slave 1 |
+| Slave 2 Status `[status slot][00..]` | `0x202` | 8 | Slave 2 |
 | CanTp Data | `0x650` | 8 | Master |
 | CanTp Flow Control | `0x658` | 8 | Slave 1 |
 
 COM transmits KeepAlive every 10 ms and each Slave status every 500 ms.
+Every occupied COM slot is 8 bits with bit 0 as its Update Bit: the wire byte
+is `(payload << 1) | U`. `AliveCounter` remains a `uint8` in application code
+but wraps from 127 to 0 so its value fits the seven payload bits. The two
+KeepAlive slots remain at bytes 0 and 1; Status occupies byte 0. COM clears
+Update Bits after accepted lower-layer transmission.
 Application KeepAlive updates are independent of the fixed COM period. A Slave
 refreshes `lastAliveTime` only when `AliveCounter` changes and reports
 `MASTER_LOST` after 2000 ms without a new value. Master declares a Slave
@@ -116,7 +121,8 @@ The following checks pass on 2026-09-24:
 - `tests/canif/run_tests.ps1`: CanIf unit and production mapping tests.
 - `tests/can_driver/run_tests.ps1`: CAN0 driver tests and ARM compilation.
 - COM runtime/config tests: KeepAlive/status bytes, role gate, retry/drop, Rx
-  counters, and 13 malformed configurations.
+  counters, and 14 malformed configurations. The board-demo runner also verifies
+  Update Bit encoding/clearing and AliveCounter wrap at 127 (2026-09-25).
 - `Debug_FLASH/Mock_MCU_Prj.elf` links successfully; the measured image is
   text 31012, data 1072, bss 7896.
 - `tests/cantp/generate_evidence.ps1` regenerates `evidence/cantp_phase3/` and

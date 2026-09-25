@@ -61,6 +61,10 @@ Master ADC -> rate level -> Master LED + AliveCounter update -> COM 0x100
   -> Slave status COM 0x201/0x202 -> Master online/offline monitor -> UART
 ```
 
+Each occupied COM byte slot reserves bit 0 for its Update Bit. KeepAlive
+`AliveCounter` and rate level are encoded as `(value << 1) | updateBit`;
+`AliveCounter` remains `uint8` in the application and wraps after 127.
+
 Image transfer:
 
 ```text

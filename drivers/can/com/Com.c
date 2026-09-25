@@ -225,7 +225,7 @@ static Std_ReturnType Com_ValidateConfig(void)
         uint16_t memberships = 0U;
         if ((Com_FindSignal(s->signalId) == NULL) || (p == NULL) || (g == NULL) ||
             (s->slotLength < 8U) || (s->slotLength > 32U) ||
-            (s->useUpdateBit > 1U) ||
+            (s->useUpdateBit != 1U) ||
             ((s->slotStartBit % 8U) != 0U) || ((s->slotLength % 8U) != 0U) ||
             ((uint32_t)s->slotStartBit + s->slotLength > (uint32_t)p->length * 8U))
         { 
@@ -256,7 +256,7 @@ static Std_ReturnType Com_ValidateConfig(void)
     return E_OK;
 }
 
-/* Clear enabled Update Bits while leaving raw Signal slots unchanged. */
+/* Clear Update Bits after acceptance while preserving Signal payloads. */
 static void Com_ClearUpdateBits(uint16_t ipduIndex)
 {
     const Com_SignalGroupConfigType *g =
@@ -304,7 +304,7 @@ Std_ReturnType Com_Init(void)
     return E_OK;
 }
 
-/* Copy a uint32_t input and encode its configured raw or Update-Bit slot. */
+/* Copy a uint32_t input and encode its Update-Bit Signal slot. */
 Std_ReturnType Com_SendSignal(PduIdType SignalId, const void *SignalDataPtr)
 {
     const Com_SignalConfigType *s;

@@ -39,6 +39,36 @@ foreach ($taskTest in $taskTests) {
     }
 }
 
+$taskComTests = @(
+    @{
+        Source = Join-Path $taskRoot 'tests/com/test_com.c'
+        Extra = Join-Path $taskRoot 'drivers/can/com/Com.c'
+        Name = 'test_com'
+    },
+    @{
+        Source = Join-Path $taskRoot 'tests/com/test_com_config.c'
+        Extra = $null
+        Name = 'test_com_config'
+    }
+)
+foreach ($taskComTest in $taskComTests) {
+    $taskExe = Join-Path $taskOutput ($taskComTest.Name + '.exe')
+    $taskSources = @($taskComTest.Source)
+    if ($taskComTest.Extra) {
+        $taskSources += $taskComTest.Extra
+    }
+    $taskSources += Join-Path $taskRoot 'drivers/can/com/Com_Cfg.c'
+    & $HostCompiler -std=c99 -Wall -Wextra -Werror $taskSources -o $taskExe 2>&1 |
+        Tee-Object -FilePath $taskLog -Append
+    if ($LASTEXITCODE -ne 0) {
+        throw "Host compilation failed for $($taskComTest.Source): $LASTEXITCODE"
+    }
+    & $taskExe 2>&1 | Tee-Object -FilePath $taskLog -Append
+    if ($LASTEXITCODE -ne 0) {
+        throw "Host test failed for $($taskComTest.Source): $LASTEXITCODE"
+    }
+}
+
 $taskArmSources = @(
     (Join-Path $taskRoot 'app/app.c'),
     (Join-Path $taskRoot 'system/System.c'),
