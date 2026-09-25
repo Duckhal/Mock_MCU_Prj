@@ -84,6 +84,9 @@ SF/FF/CF/FC format, retry, N_As/N_Ar/N_Bs/N_Cr, abort and late confirmation,
 plus defensive length/SN/session/OVFLW handling. CanTp uses the CanIf L-PDU
 macros directly; current Data/FC local handles are 3 and 4 after the three COM
 routes.
+`Architecture.md` now distinguishes SF queue-full discard (no FC) from FF
+queue-full standalone FC(OVFLW), records all four timer event boundaries, and
+lists the implemented CanTp limits alongside the state diagrams.
 
 ## Integration order and ownership
 

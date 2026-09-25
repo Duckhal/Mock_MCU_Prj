@@ -339,6 +339,22 @@ The active timing profile is:
 | Maximum retries | 3 |
 | Padding byte | `0x00` |
 
+The four 100 ms timers have different start and stop events:
+
+| Timer | Starts when | Stops or restarts when | At 100 ms without that event |
+| --- | --- | --- | --- |
+| `N_As` | CanIf accepts a Data SF/FF/CF request (`E_OK`) | Matching local Data TxConfirmation stops it | Abort Tx and report final `E_NOT_OK` once; keep `txPduPending` locked until a late confirmation or verified lower-layer recovery |
+| `N_Ar` | CanIf accepts an FC CTS/OVFLW request (`E_OK`) | Matching local FC TxConfirmation stops it | Abort the active Rx session and release its reserved slot, if any; keep `fcTxPending` locked. Standalone OVFLW has no Rx session to notify |
+| `N_Bs` | Local FF TxConfirmation, or local confirmation of the fourth CF while data remains | Valid matching CTS stops it; abort also stops it | Abort Tx and report final `E_NOT_OK` once; the App decides whether to resubmit the N-SDU |
+| `N_Cr` | Local FC(CTS) TxConfirmation | A valid CF restarts it if another CF is due in the same block; stop it while preparing the next CTS, or on completion/abort | Abort Rx, release the `RESERVED` slot, and report final `E_NOT_OK` once |
+
+`STmin` is a separate 5 ms send gate, not a fifth timeout. It starts from the
+previous CF's local TxConfirmation, including the CF4-to-CF5 boundary across
+FC2. FC does not reset this gate, and CF1 has no STmin wait from the FF.
+The 1 ms scheduler dispatches received frames before `CanTp_MainFunction()`
+checks timeout expiry, so an FC or CF received on the boundary tick can stop
+its corresponding timer first.
+
 CanTp commits its offset, sequence number, and block counter only after the
 matching Tx confirmation. Duplicate or late frames, invalid lengths, sequence
 number errors, timeouts, and exhausted retries are handled according to the
@@ -412,7 +428,10 @@ second result; a new N-SDU remains blocked until that release.
 stateDiagram-v2
     [*] --> RX_IDLE
     RX_IDLE --> RX_IDLE: Valid SF; reserve, copy complete N-SDU, publish READY
-    RX_IDLE --> RX_IDLE: Invalid frame or no room; discard or send standalone OVFLW
+    RX_IDLE --> RX_IDLE: Valid SF but queue full; discard without FC
+    RX_IDLE --> RX_IDLE: Valid FF but queue full; send standalone FC OVFLW
+    RX_IDLE --> RX_IDLE: FF length above 62; send standalone FC OVFLW
+    RX_IDLE --> RX_IDLE: Malformed SF or FF; discard without FC
     RX_IDLE --> RX_FC_PENDING: Valid FF; reserve slot, append 6 bytes, prepare CTS
     RX_FC_PENDING --> RX_FC_PENDING: FC request rejected; retry on next tick
     RX_FC_PENDING --> RX_WAIT_CF: CTS confirmed; start N_Cr
@@ -427,9 +446,20 @@ stateDiagram-v2
 
 `fcRequestActive` and `fcTxPending` protect the FC frame independently of the
 three Rx states. An `RX_IDLE` receiver can therefore still be sending a
-standalone OVFLW. `N_Cr` begins after local CTS confirmation and pauses while
-a new CTS is pending. A failed session releases its reserved slot, not older
-`READY` slots; the application never receives a partial N-SDU.
+standalone OVFLW (`32 00 00 00 00 00 00 00`). A full queue causes a valid SF
+to be discarded with **no FC**, because SF has no flow-control exchange. In
+`RX_IDLE`, a valid FF with no free queue slot instead causes standalone OVFLW;
+no session is reserved and no final Rx callback is issued for that rejected
+FF. An FF declaring more than 62 bytes gets the same OVFLW response only when
+the receiver is idle; it does not replace an active session. Malformed SF/FF
+is discarded without replacing an active session. Existing `READY` slots
+remain intact in all these cases.
+
+`N_Cr` begins after local CTS confirmation and pauses while a new CTS is
+pending. A failed active session releases its reserved slot, not older `READY`
+slots; the application never receives a partial N-SDU. Queue-full SF is
+covered by `evidence/cantp_phase3/SUPPLEMENTAL_DEFENSIVE.md`; queue-full FF
+and oversized FF are covered by T10 and T11 in the same evidence directory.
 
 ### 8.5 Segmented 62-Byte Trace: FF, Two FC, Eight CF
 
@@ -489,6 +519,31 @@ readability; it does not guarantee their order across ECUs. Every consecutive
 CF request must satisfy `next request - previous CF local confirmation >= 5
 ms`, including CF4 to CF5. Sender completion is local and independent of the
 receiver's `READY` transition.
+
+### 8.6 Implemented Boundaries
+
+- This project implements the guide's three phases; there is no Phase 4 in
+  this assignment. It supports one configured CanTp connection, one active Tx
+  N-SDU, and N-SDU lengths of 1..62 bytes. There is no chunk refill, dynamic
+  allocation, or queue of pending CanTp Tx requests.
+- FC(CTS) and FC(OVFLW) are implemented with fixed `BS = 4` and
+  `STmin = 5 ms`; FC(WAIT) is not implemented.
+- `CanIf_Transmit() == E_OK` means one CAN-frame request was accepted. The
+  final CanTp Tx `E_OK` means local N-SDU completion; it does not prove the
+  receiver's application consumed the data. There is no application-level
+  ACK/NACK, CRC, or CanTp receiver retransmission protocol.
+- A Data or FC frame accepted by CanIf is not retransmitted while its local
+  confirmation is missing. On `N_As` or `N_Ar` timeout, the logical session
+  may abort while its pending frame resource remains locked. The implementation
+  has no mailbox abort/restart; reuse requires a late confirmation or external
+  verified recovery.
+- A new valid SF/FF can replace an active Rx session only when the FC resource
+  is idle. Replacement with an older FC still in flight is not guaranteed;
+  there is no FC session identifier or forced mailbox cancellation.
+- `GlobalPduId` remains a configured logical identity. The project does not
+  serialize it on the CAN wire or multiplex several Global PDU IDs over one
+  shared CanTp connection. This mock stack does not claim full AUTOSAR or
+  ISO-TP compliance.
 
 ## 9. Application Roles
 
