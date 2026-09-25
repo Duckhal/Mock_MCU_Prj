@@ -9,6 +9,7 @@
 #define main App_Entry
 #include "../../src/main.c"
 #undef main
+#include "../../system/System.c"
 #include "../../app/app.c"
 #include "../../middlewares/ring_buffer.c"
 

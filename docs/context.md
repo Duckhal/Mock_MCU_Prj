@@ -76,8 +76,10 @@ routes.
 
 ## Integration order and ownership
 
-`src/main.c` owns hardware/stack/application initialization, system failure
-policy, SysTick setup, optional loopback fixtures, and this 1 ms order:
+`src/main.c` is a minimal entry point that calls `System_Init()` and repeatedly
+calls `System_RunTask()`. `system/System.c` owns hardware/stack/application
+initialization, system failure policy, SysTick setup, optional loopback
+fixtures, and this 1 ms order:
 
 ```text
 Can_MainFunction_Write

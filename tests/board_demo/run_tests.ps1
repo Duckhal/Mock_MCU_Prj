@@ -41,6 +41,7 @@ foreach ($taskTest in $taskTests) {
 
 $taskArmSources = @(
     (Join-Path $taskRoot 'app/app.c'),
+    (Join-Path $taskRoot 'system/System.c'),
     (Join-Path $taskRoot 'src/main.c'),
     (Join-Path $taskRoot 'src/cantp_loopback_test.c'),
     (Join-Path $taskRoot 'drivers/can/com/Com.c')

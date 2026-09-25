@@ -7,7 +7,8 @@ Tài liệu kiến trúc đầy đủ, gồm sơ đồ tầng, sequence và PDU 
 
 | Area | Main files | Responsibility |
 | --- | --- | --- |
-| Entrypoint | `src/main.c` | Ordered boot, stack init, application init, SysTick, system error policy, 1 ms scheduler |
+| Entrypoint | `src/main.c` | Calls `System_Init()` once and continuously calls `System_RunTask()` |
+| System integration | `system/System.c`, `System.h`, `System_Cfg.h` | Ordered boot, stack init, SysTick, failure policy, test switches and 1 ms scheduler |
 | Application policy | `app/app.c`, `app/app.h` | Compile-time Master/Slave1/Slave2 role, ADC, LED, UART, COM use, liveness and image chunks |
 | CanTp application buffers | `app/node_app.c`, `app/node_app.h` | Stable Tx source, two-slot Rx queue and PduR callbacks |
 | Future gateway | `app/gateway_app.c`, `app/gateway_app.h` | Reserved; no active behavior |

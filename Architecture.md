@@ -61,7 +61,8 @@ CanIf, and receives them through the CanIf -> PduR -> CanTp callback path.
 
 | Layer | Main files | Responsibility |
 | --- | --- | --- |
-| System integration | `src/main.c` | Initializes the system, applies the system error policy, and runs the 1 ms scheduler |
+| Entry point | `src/main.c` | Calls `System_Init()` once and `System_RunTask()` continuously |
+| System integration | `system/System.c`, `system/System.h` | Initializes the system, applies the system error policy, and runs the 1 ms scheduler |
 | Application | `app/app.c`, `app/app.h` | Owns ECU roles, ADC, LEDs, UART, liveness, COM usage, and UART-to-CanTp chunking |
 | CanTp application adapter | `app/node_app.c`, `app/node_app.h` | Preserves the Tx N-SDU, manages two Rx slots, and implements PduR-facing callbacks |
 | COM | `drivers/can/com/` | Stores Signals, packs eight-byte I-PDUs, schedules periodic Tx, and decodes Rx I-PDUs |
@@ -79,7 +80,7 @@ the application.
 
 ## 4. System Initialization
 
-`main()` initializes the project in this order:
+`System_Init()` initializes the project in this order:
 
 ```text
 disable_WDOG / init_MCU
@@ -100,7 +101,8 @@ by its module. If any step fails, `System_Fail()` stores the reason in
 
 ## 5. One-Millisecond Scheduler
 
-After initialization, `src/main.c` processes every pending tick in this order:
+After initialization, `System_RunTask()` processes every pending tick in this
+order:
 
 ```text
 Can_MainFunction_Write()
@@ -332,6 +334,7 @@ to the COM or CanTp policy.
 | Change | Primary files |
 | --- | --- |
 | Firmware role | `app/app.h` or the `APP_BOARD_ROLE` build define |
+| Integration-test switches | `system/System_Cfg.h` |
 | CAN IDs and local CanIf handles | `drivers/can/canif/CanIf_Cfg.c/h` |
 | Global PDU IDs | `drivers/can/common/CanStack_Cfg.h` |
 | COM Signal layout, I-PDUs, and periods | `drivers/can/com/Com_Cfg.c/h` |
@@ -339,7 +342,8 @@ to the COM or CanTp policy.
 | CanTp BS, STmin, timers, retries, and wire format | `drivers/can/cantp/Cantp_Cfg.h` |
 | CAN controller and hardware objects | `drivers/can/can_driver/Can_Cfg.c/h` |
 | ADC, LED, UART, and liveness policy | `app/app.c` |
-| Scheduler and initialization order | `src/main.c` |
+| Scheduler and initialization order | `system/System.c` |
+| Program entry point | `src/main.c` |
 
 When changing a CAN ID or local handle, update every related configuration
 table and run the mapping tests to prevent route mismatches among CanIf, PduR,
