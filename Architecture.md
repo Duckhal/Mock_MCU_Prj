@@ -533,6 +533,59 @@ valid Status I-PDU is received again.
 - UART image input starts with a little-endian `uint16` length followed by
   exactly the declared number of payload bytes.
 
+### 10.1 PC UART Framing and Pacing
+
+The PC sends one binary stream, `[uint16 image length, little endian][raw
+image bytes]`, to the Master UART at 115200 8N1. The first two bytes are the
+length header; UART block boundaries are not part of the image protocol.
+The PC sender must provide a configurable pause between blocks as required by
+the application assignment. The current PC test setting is **at most 256 bytes
+per UART block, then a 50 ms pause before the next block**. This setting belongs
+to the PC sender, not to a firmware delay or CAN flow-control handshake.
+
+The 17 KiB Master UART Rx ring buffers bursts but provides no backpressure to
+the PC. It must not be interpreted as permission to stream images continuously
+at arbitrary speed: CAN transport, retries, and other scheduler work can drain
+it more slowly than the PC fills it. `g_AppUartRxOverflows` counts bytes that
+could not enter the ring. If it increases, the input stream has lost bytes;
+reduce the host block size or increase its pause, then resend the image.
+The 256-byte/50-ms setting is a current test setting, not a proven throughput
+guarantee for all image lengths, bus loads, or retry patterns.
+
+### 10.2 Application Retry per Image Chunk
+
+The Master pops at most 62 image bytes into `App_ImageChunk` and retains that
+exact chunk until its CanTp N-SDU result is resolved. For each chunk, the App
+allows **one initial `App_SendLargeMessage()` attempt plus at most three
+application retries** (`APP_IMAGE_MAX_RETRIES = 3`). A rejected application
+request or a final CanTp `E_NOT_OK` counts as a failed attempt. On final
+`E_OK`, the App releases the chunk and prepares the next one. After the fourth
+failed attempt, it increments `g_AppImageChunksDropped`, discards only that
+chunk, and continues with the remaining bytes of the current image.
+
+```mermaid
+flowchart TD
+    C["Keep one prepared chunk of at most 62 bytes"] --> T["Submit N-SDU through NodeApp, PduR and CanTp"]
+    T --> A{"Request accepted?"}
+    A -- Yes --> W["Wait for final CanTp N-SDU result"]
+    A -- No --> F["Failed application attempt"]
+    W -- E_OK --> N["Release chunk, prepare next chunk"]
+    W -- E_NOT_OK --> F
+    F --> R{"Fewer than 3 application retries used?"}
+    R -- Yes --> I["Increment retry count, keep same chunk"]
+    I --> T
+    R -- No --> D["Drop this chunk, prepare next chunk"]
+```
+
+This is separate from CanTp's bounded retry of an individual **8-byte CAN
+Data or FC frame**. An App retry submits the whole chunk as a new N-SDU;
+CanTp frame retries do not consume `APP_IMAGE_MAX_RETRIES`. After a CanTp
+N_As abort with a Data frame still awaiting late local confirmation, a new
+App submission may be rejected until that frame resource is released. The
+transfer is best effort: there is no application-level ACK or recovery of a
+chunk dropped after retry exhaustion. The deterministic App retry fixture is
+`tests/board_demo/test_uart_cantp_echo_timeout.c`.
+
 ## 11. CAN Driver and Hardware
 
 The CAN Driver supports one controller:
@@ -570,6 +623,8 @@ to the COM or CanTp policy.
 | CanTp BS, STmin, timers, retries, and wire format | `drivers/can/cantp/Cantp_Cfg.h` |
 | CAN controller and hardware objects | `drivers/can/can_driver/Can_Cfg.c/h` |
 | ADC, LED, UART, and liveness policy | `app/app.c` |
+| PC UART block size and inter-block pause | PC sender; current test setting is 256 bytes and 50 ms |
+| Application image-chunk retry limit | `APP_IMAGE_MAX_RETRIES` in `app/app.h`; state in `app/app.c` |
 | Scheduler and initialization order | `system/System.c` |
 | Program entry point | `src/main.c` |
 

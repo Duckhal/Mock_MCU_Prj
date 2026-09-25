@@ -107,6 +107,11 @@ scheduling; PduR owns routes; CanIf owns CAN-ID mapping; CanDrv owns CAN0.
 
 ## Image-transfer policy
 
+The PC sender currently uses blocks of at most 256 UART bytes with a 50 ms
+pause between blocks. This host-side delay must remain configurable; the
+firmware has no UART input backpressure. `Architecture.md` sections 10.1-10.2
+document pacing and the separate App-level image-chunk retry policy.
+
 The UART receive ring is bounded and never overwrites unread bytes. Only one
 image and one chunk are active at a time. A chunk buffer remains unchanged
 until final CanTp confirmation. Every failed chunk gets one initial attempt

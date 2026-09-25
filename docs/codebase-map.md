@@ -6,6 +6,8 @@ Tài liệu kiến trúc đầy đủ, gồm sơ đồ tầng, sequence và PDU 
 For handover diagrams, see `Architecture.md` sections 7.1-7.6 for COM
 Signal/Group/I-PDU, Update Bit, retry and GlobalPduId traces, and sections
 8.3-8.5 for the implemented CanTp states and 62-byte segmented sequence.
+Sections 10.1-10.2 document host UART pacing (currently 256 bytes/50 ms) and
+the separate App image-chunk retry limit of three.
 
 ## Composition and scheduler
 
