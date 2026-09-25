@@ -12,45 +12,22 @@ extern volatile CanTp_AbortReasonType CanTp_LastRxAbortReason;
 extern volatile uint32_t CanTp_TxAbortCount;
 extern volatile uint32_t CanTp_RxAbortCount;
 
-/*
- * @brief Initialize the mock CanTp module.
- * @return E_OK when the fixed configuration is valid; otherwise E_NOT_OK.
- */
+/* Validate the fixed configuration and initialize CanTp. */
 Std_ReturnType CanTp_Init(void);
 
 /* Enable or disable reception of Data N-PDUs while no Rx session is active. */
 Std_ReturnType CanTp_SetDataRxEnabled(uint8_t Enabled);
 
-/*
- * @brief Accept one upper-layer N-SDU transmission request.
- * @param TxNSduId Configured transmit N-SDU handle.
- * @param PduInfoPtr Complete payload request with length from 1 to 62 bytes.
- * @return E_OK when the request is accepted; otherwise E_NOT_OK.
- *
- * E_OK means that CanTp owns the request. Final transfer status is reported
- * later through the PduR Tx-confirmation callback.
- */
+/* Accept one 1..62-byte N-SDU; report final status later through PduR. */
 Std_ReturnType CanTp_Transmit(PduIdType TxNSduId, const PduInfoType *PduInfoPtr);
 
-/*
- * @brief Receive one complete eight-byte Data or Flow Control N-PDU.
- * @param RxNPduId Configured receive N-PDU handle.
- * @param PduInfoPtr Frame payload, valid only during this callback.
- */
+/* Process one complete eight-byte Data or Flow Control N-PDU. */
 void CanTp_RxIndication(PduIdType RxNPduId, const PduInfoType *PduInfoPtr);
 
-/*
- * @brief Receive local confirmation for one Data or Flow Control N-PDU.
- * @param TxNPduId Configured transmit N-PDU handle.
- */
+/* Process a local Tx confirmation for a Data or Flow Control N-PDU. */
 void CanTp_TxConfirmation(PduIdType TxNPduId);
 
-/*
- * @brief Advance retry, timeout and STmin processing by one millisecond.
- *
- * The integration scheduler shall call this function exactly once per 1 ms
- * tick after dispatching lower-layer confirmations and received frames.
- */
+/* Advance retry, timeout, and STmin processing once per 1 ms tick. */
 void CanTp_MainFunction(void);
 
 #endif /* CANTP_H_ */
