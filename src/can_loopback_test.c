@@ -129,7 +129,7 @@ static uint8_t Loopback_TxBytes[LOOPBACK_DATA_LENGTH];
 /*=========================================================================
  * Shared Test Helpers
  *==========================================================================*/
-/** Capture controller diagnostics without reading/locking the Rx mailbox CS. */
+/* Capture controller diagnostics without reading/locking the Rx mailbox CS. */
 static void Loopback_Snapshot(void)
 {
     g_CanLoopbackTestResult.mcr = CAN0->MCR;
@@ -138,7 +138,7 @@ static void Loopback_Snapshot(void)
     g_CanLoopbackTestResult.iflag1 = CAN0->IFLAG1;
 }
 
-/** Latch the first failure and preserve its stage, counters and register snapshot. */
+/* Latch the first failure and preserve its stage, counters and register snapshot. */
 static void Loopback_Fail(Loopback_ErrorType error)
 {
     if (g_CanLoopbackTestResult.status != LOOPBACK_FAIL)
@@ -152,7 +152,7 @@ static void Loopback_Fail(Loopback_ErrorType error)
 /*=========================================================================
  * Can Test - Freeze Handshakes and Internal Loopback Setup
  *==========================================================================*/
-/** Wait for a bounded MCR handshake; return zero if the requested bits never match. */
+/* Wait for a bounded MCR handshake; return zero if the requested bits never match. */
 static uint8_t Loopback_WaitMcr(uint32_t mask, uint32_t expected)
 {
     uint32_t remaining;
@@ -167,7 +167,7 @@ static uint8_t Loopback_WaitMcr(uint32_t mask, uint32_t expected)
     return 0U;
 }
 
-/** Enable internal loopback after driver init, changing protected bits in Freeze. */
+/* Enable internal loopback after driver init, changing protected bits in Freeze. */
 static uint8_t Loopback_EnableMode(void)
 {
     g_CanLoopbackTestResult.stage = LOOPBACK_STAGE_FREEZE_ENTRY;
@@ -202,7 +202,7 @@ static uint8_t Loopback_EnableMode(void)
 /*=========================================================================
  * CanIf / PduR Test - Observe Real Routed Callbacks
  *==========================================================================*/
-/** Compare PduR callback snapshots with the active frame after polling. */
+/* Compare PduR callback snapshots with the active frame after polling. */
 static void Loopback_ObserveCallbacks(uint32_t txBefore, uint32_t rxBefore)
 {
     uint8_t index;
@@ -236,7 +236,7 @@ static void Loopback_ObserveCallbacks(uint32_t txBefore, uint32_t rxBefore)
 /*=========================================================================
  * PduR Test - Invalid Transmit Requests
  *==========================================================================*/
-/** Verify invalid PduR requests fail without creating a Tx or Rx callback. */
+/* Verify invalid PduR requests fail without creating a Tx or Rx callback. */
 static uint8_t Loopback_CheckPduRRejections(void)
 {
     uint8_t index;
@@ -287,7 +287,7 @@ static uint8_t Loopback_CheckPduRRejections(void)
 /*=========================================================================
  * Shared Test Case - Payload Preparation and Module Selection
  *==========================================================================*/
-/** Send one DLC case through CanDrv, CanIf or PduR; check BUSY/copy/callbacks. */
+/* Send one DLC case through CanDrv, CanIf or PduR; check BUSY/copy/callbacks. */
 static uint8_t Loopback_RunCase(Loopback_TxPathType path, uint8_t length)
 {
     static const uint8_t pattern[LOOPBACK_DATA_LENGTH] =
@@ -437,7 +437,7 @@ static uint8_t Loopback_RunCase(Loopback_TxPathType path, uint8_t length)
 /*=========================================================================
  * COM Test - Signal Packing, Periodic Scheduling, Retry and Full Rx Route
  *==========================================================================*/
-/** Poll both CAN functions until one COM Tx completion and Rx I-PDU arrive. */
+/* Poll both CAN functions until one COM Tx completion and Rx I-PDU arrive. */
 static uint8_t Loopback_WaitComFrame(uint32_t txTarget, uint32_t rxTarget)
 {
     uint32_t poll;
@@ -456,7 +456,7 @@ static uint8_t Loopback_WaitComFrame(uint32_t txTarget, uint32_t rxTarget)
     return 0U;
 }
 
-/** Prove the KeepAlive frame layout, periodic BUSY handling and latest retry. */
+/* Prove the KeepAlive frame layout, periodic BUSY handling and latest retry. */
 static uint8_t Loopback_RunComTest(void)
 {
     uint32_t txBefore = Com_TxConfirmationCount;
@@ -528,7 +528,7 @@ static uint8_t Loopback_RunComTest(void)
 /*=========================================================================
  * Board Test Entry Point
  *==========================================================================*/
-/** Run all DLC 0..8 cases through one requested stack entry point. */
+/* Run all DLC 0..8 cases through one requested stack entry point. */
 static uint8_t Loopback_RunPathCases(Loopback_TxPathType path)
 {
     uint8_t length;
@@ -539,19 +539,19 @@ static uint8_t Loopback_RunPathCases(Loopback_TxPathType path)
     return 1U;
 }
 
-/** Test the CanDrv direct path. */
+/* Test the CanDrv direct path. */
 static uint8_t Loopback_TestCanDriver(void)
 { return Loopback_RunPathCases(LOOPBACK_TX_DRIVER); }
 
-/** Test the CanIf path. */
+/* Test the CanIf path. */
 static uint8_t Loopback_TestCanIf(void)
 { return Loopback_RunPathCases(LOOPBACK_TX_CANIF); }
 
-/** Test the PduR Tx path. */
+/* Test the PduR Tx path. */
 static uint8_t Loopback_TestPduR(void)
 { return Loopback_RunPathCases(LOOPBACK_TX_PDUR); }
 
-/** Run all three raw Tx paths and the full COM Signal loopback test. */
+/* Run all three raw Tx paths and the full COM Signal loopback test. */
 void CanLoopbackTest_Run(void)
 {
     g_CanLoopbackTestResult.status = LOOPBACK_RUNNING;

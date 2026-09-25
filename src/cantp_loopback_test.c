@@ -11,7 +11,7 @@
 
 volatile CanTpLoopback_ResultType g_CanTpLoopbackTestResult;
 
-/** Capture CAN0 registers for debugger evidence without locking the Rx MB. */
+/* Capture CAN0 registers for debugger evidence without locking the Rx MB. */
 static void CanTpLoopback_Snapshot(void)
 {
     g_CanTpLoopbackTestResult.mcr = CAN0->MCR;
@@ -20,7 +20,7 @@ static void CanTpLoopback_Snapshot(void)
     g_CanTpLoopbackTestResult.iflag1 = CAN0->IFLAG1;
 }
 
-/** Preserve the first detected failure and its hardware snapshot. */
+/* Preserve the first detected failure and its hardware snapshot. */
 static void CanTpLoopback_Fail(CanTpLoopback_ErrorType Error)
 {
     if (g_CanTpLoopbackTestResult.status != CANTP_LOOPBACK_FAIL)
@@ -31,7 +31,7 @@ static void CanTpLoopback_Fail(CanTpLoopback_ErrorType Error)
     }
 }
 
-/** Wait for one bounded CAN0 MCR handshake. */
+/* Wait for one bounded CAN0 MCR handshake. */
 static uint8_t CanTpLoopback_WaitMcr(uint32_t Mask, uint32_t Expected)
 {
     uint32_t remaining;
@@ -46,7 +46,7 @@ static uint8_t CanTpLoopback_WaitMcr(uint32_t Mask, uint32_t Expected)
     return 0U;
 }
 
-/** Change internal loopback only while CAN0 acknowledges Freeze mode. */
+/* Change internal loopback only while CAN0 acknowledges Freeze mode. */
 Std_ReturnType CanTpLoopbackTest_SetEnabled(uint8_t Enable)
 {
     if (g_CanTpLoopbackTestResult.status != CANTP_LOOPBACK_FAIL)
@@ -99,7 +99,7 @@ Std_ReturnType CanTpLoopbackTest_SetEnabled(uint8_t Enable)
     return E_OK;
 }
 
-/** Initialize the observable result and deterministic increasing payload. */
+/* Initialize the observable result and deterministic increasing payload. */
 static void CanTpLoopback_ResetResult(void)
 {
     uint8_t index;
@@ -122,7 +122,7 @@ static void CanTpLoopback_ResetResult(void)
     CanTpLoopback_Snapshot();
 }
 
-/** Verify final callbacks, queue length and every reassembled payload byte. */
+/* Verify final callbacks, queue length and every reassembled payload byte. */
 static uint8_t CanTpLoopback_Verify(void)
 {
     uint8_t received[CANTP_LOOPBACK_PAYLOAD_LENGTH];
@@ -172,7 +172,7 @@ static uint8_t CanTpLoopback_Verify(void)
     return 1U;
 }
 
-/** Run one real 62-byte CanTp transfer, then restore normal CAN operation. */
+/* Run one real 62-byte CanTp transfer, then restore normal CAN operation. */
 Std_ReturnType CanTpLoopbackTest_Run(void)
 {
     uint8_t payload[CANTP_LOOPBACK_PAYLOAD_LENGTH];

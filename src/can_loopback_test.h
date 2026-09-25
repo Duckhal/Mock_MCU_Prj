@@ -61,13 +61,13 @@ typedef struct
 
 extern volatile CanTpLoopback_ResultType g_CanTpLoopbackTestResult;
 
-/** Run the CanDrv/CanIf/PduR/COM internal-loopback board tests. */
+/* Run the CanDrv/CanIf/PduR/COM internal-loopback board tests. */
 void CanLoopbackTest_Run(void);
 
-/** Run one complete 62-byte CanTp transfer through CAN0 internal loopback. */
+/* Run one complete 62-byte CanTp transfer through CAN0 internal loopback. */
 Std_ReturnType CanTpLoopbackTest_Run(void);
 
-/** Enable or disable CAN0 internal loopback for interactive board testing. */
+/* Enable or disable CAN0 internal loopback for interactive board testing. */
 Std_ReturnType CanTpLoopbackTest_SetEnabled(uint8_t Enable);
 
 #endif /* CAN_LOOPBACK_TEST_H_ */

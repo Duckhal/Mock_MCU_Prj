@@ -1,5 +1,8 @@
 # Project Context
 
+Kiến trúc tổng thể và các luồng COM/CanTp được trình bày tại
+`Architecture.md` ở thư mục gốc.
+
 ## UART image-size diagnosis (2026-09-24)
 
 - `ascii_cat_512B_showcase.txt` is 512 raw bytes and

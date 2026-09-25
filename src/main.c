@@ -38,7 +38,7 @@ typedef enum
 volatile System_StatusType g_SystemStatus;
 volatile uint32_t g_SystemProcessedTicks;
 
-/** Latch a system-level failure for the debugger and stop scheduling. */
+/* Latch a system-level failure for the debugger and stop scheduling. */
 static void System_Fail(System_StatusType Status)
 {
     g_SystemStatus = Status;
@@ -47,7 +47,7 @@ static void System_Fail(System_StatusType Status)
     }
 }
 
-/** Initialize hardware, the communication stack, application, and scheduler. */
+/* Initialize hardware, the communication stack, application, and scheduler. */
 int main(void)
 {
     uint32_t lastTick;

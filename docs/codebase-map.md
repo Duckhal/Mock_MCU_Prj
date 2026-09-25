@@ -1,5 +1,8 @@
 # Codebase Map
 
+Tài liệu kiến trúc đầy đủ, gồm sơ đồ tầng, sequence và PDU mapping, nằm tại
+`Architecture.md` ở thư mục gốc.
+
 ## Composition and scheduler
 
 | Area | Main files | Responsibility |
